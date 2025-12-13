@@ -1,0 +1,76 @@
+package io.kitsuri.m1rage.utils;
+
+import org.jf.baksmali.Baksmali;
+import org.jf.baksmali.BaksmaliOptions;
+import org.jf.dexlib2.DexFileFactory;
+import org.jf.dexlib2.Opcodes;
+import org.jf.dexlib2.analysis.InlineMethodResolver;
+import org.jf.dexlib2.dexbacked.DexBackedDexFile;
+import org.jf.dexlib2.dexbacked.DexBackedOdexFile;
+import org.jf.dexlib2.iface.MultiDexContainer;
+
+import java.io.File;
+
+
+public class DexToSmali {
+
+    private final boolean mDebugInfo;
+    private final File mInputFile, mOutDir;
+    private final int mAPI;
+    private final String mDEXName;
+
+    public DexToSmali(boolean debugInfo, File inputFile, File outDir, int api, String dexName) {
+        this.mDebugInfo = debugInfo;
+        this.mInputFile = inputFile;
+        this.mOutDir = outDir;
+        this.mAPI = api;
+        this.mDEXName = dexName;
+    }
+
+    public void execute() {
+        try {
+            final BaksmaliOptions options = new BaksmaliOptions();
+            // options
+            options.deodex = false;
+            options.implicitReferences = false;
+            options.parameterRegisters = true;
+            options.localsDirective = true;
+            options.sequentialLabels = true;
+            options.debugInfo = mDebugInfo;
+            options.codeOffsets = false;
+            options.accessorComments = false;
+            options.registerInfo = 0;
+            options.inlineResolver = null;
+            // set jobs automatically
+            int jobs = Runtime.getRuntime().availableProcessors();
+            if (jobs > 6) {
+                jobs = 6;
+            }
+            // create the container
+            MultiDexContainer<? extends DexBackedDexFile> container = DexFileFactory.loadDexContainer(mInputFile, Opcodes.forApi(mAPI));
+            MultiDexContainer.DexEntry<? extends DexBackedDexFile> dexEntry;
+            DexBackedDexFile dexFile;
+            // If we have 1 item, ignore the passed file. Pull the DexFile we need.
+            if (container.getDexEntryNames().size() == 1) {
+                dexEntry = container.getEntry(container.getDexEntryNames().get(0));
+            } else {
+                dexEntry = container.getEntry(mDEXName);
+            }
+            // Double check the passed param exists
+            if (dexEntry == null) {
+                dexEntry = container.getEntry(container.getDexEntryNames().get(0));
+            }
+            assert dexEntry != null;
+            dexFile = dexEntry.getDexFile();
+            if (dexFile.supportsOptimizedOpcodes()) {
+                throw new Exception("Warning: You are disassembling an odex file without deodexing it.");
+            }
+            if (dexFile instanceof DexBackedOdexFile) {
+                options.inlineResolver = InlineMethodResolver.createInlineMethodResolver(((DexBackedOdexFile)dexFile).getOdexVersion());
+            }
+            Baksmali.disassembleDexFile(dexFile, mOutDir, jobs, options);
+        } catch (Exception ignored) {
+        }
+    }
+
+}
