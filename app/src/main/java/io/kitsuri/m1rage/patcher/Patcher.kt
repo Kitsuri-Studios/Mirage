@@ -2,6 +2,8 @@ package io.kitsuri.m1rage.patcher
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
+import io.kitsuri.m1rage.model.PatcherViewModel
 import io.kitsuri.m1rage.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +15,24 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 
 object Patcher {
+
+    private var viewModel: PatcherViewModel? = null
+
+    /**
+     * Set the ViewModel to enable logging to UI
+     */
+    fun setViewModel(vm: PatcherViewModel) {
+        viewModel = vm
+        // Set for all Java utilities
+        SmaliUtils.setViewModel(vm)
+        DexToSmali.setViewModel(vm)
+        APKSigner.setViewModel(vm)
+        ZipAlign.setViewModel(vm)
+    }
+
+    private fun addLog(level: Int, message: String) {
+        viewModel?.addLog(level, message)
+    }
 
     /**
      * Main entry point to modify an APK:
@@ -35,28 +55,38 @@ object Patcher {
             val workDir = File(context.getExternalFilesDir(null), "apk_workspace/$timestamp")
             workDir.mkdirs()
 
+            addLog(Log.INFO, "Creating workspace directory")
             val apkFile = File(workDir, "input.apk")
             context.contentResolver.openInputStream(apkUri)?.use { input ->
                 FileOutputStream(apkFile).use { output -> input.copyTo(output) }
             }
 
+            addLog(Log.INFO, "Extracting APK contents...")
             val extractDir = File(workDir, "extracted")
             extractDir.mkdirs()
             APKInstallUtils.unzip(apkFile.absolutePath, extractDir.absolutePath)
 
             val manifestFile = File(extractDir, "AndroidManifest.xml")
             if (!manifestFile.exists()) {
+                addLog(Log.ERROR, "AndroidManifest.xml not found")
                 return@withContext null
             }
 
             val launcherActivity = ManifestParser.findLauncherActivity(manifestFile)
-                ?: return@withContext null
+            if (launcherActivity == null) {
+                addLog(Log.ERROR, "Failed to find launcher activity")
+                return@withContext null
+            }
+
+            addLog(Log.INFO, "Launcher activity: $launcherActivity")
 
             val dexFiles = extractDir.listFiles()
                 ?.filter { it.name.endsWith(".dex") }
                 ?.sortedBy { it.name }
 
-            dexFiles?.forEach { dexFile ->
+            addLog(Log.INFO, "Found ${dexFiles?.size ?: 0} DEX files")
+
+            dexFiles?.forEachIndexed { index, dexFile ->
                 val smaliDirName = when (dexFile.name) {
                     "classes.dex" -> "smali"
                     else -> "smali_${dexFile.nameWithoutExtension}"
@@ -65,27 +95,45 @@ object Patcher {
                 outputSmali.mkdirs()
 
                 try {
+                    addLog(Log.INFO, "Decompiling ${dexFile.name}...")
                     DexToSmali(true, dexFile, outputSmali, 30, dexFile.name).execute()
                 } catch (e: Exception) {
-                    // Decompilation failure for this DEX is non-fatal; continue with others
+                    addLog(Log.WARN, "Failed to decompile ${dexFile.name}: ${e.message}")
                 }
             }
 
+            addLog(Log.INFO, "Locating launcher activity smali file...")
             val smaliFile = locateSmali(extractDir, launcherActivity)
-                ?: return@withContext null
+            if (smaliFile == null) {
+                addLog(Log.ERROR, "Could not find smali file for $launcherActivity")
+                return@withContext null
+            }
+
+            addLog(Log.INFO, "Found: ${smaliFile.name}")
 
             val injected = if (injectionMode == "constructor") {
+                addLog(Log.INFO, "Injecting into constructor...")
                 injectConstructor(smaliFile)
             } else {
+                addLog(Log.INFO, "Injecting into onCreate...")
                 injectOnCreate(smaliFile)
             }
 
-            if (!injected) return@withContext null
+            if (!injected) {
+                addLog(Log.ERROR, "Failed to inject library loader")
+                return@withContext null
+            }
 
+            addLog(Log.INFO, "Library loader injected successfully")
+
+            addLog(Log.INFO, "Copying native libraries...")
             addNativeLibs(context, extractDir)
 
+            addLog(Log.INFO, "Patch preparation complete")
             extractDir // Return modified extracted directory
         } catch (e: Exception) {
+            addLog(Log.ERROR, "Patch failed: ${e.message}")
+            e.printStackTrace()
             null
         }
     }
@@ -109,6 +157,8 @@ object Patcher {
                 mkdirs()
             }
 
+            addLog(Log.INFO, "Preparing build directory...")
+
             // Copy everything except Smali directories
             extractDir.listFiles()?.forEach { file ->
                 if (!file.name.startsWith("smali")) {
@@ -121,20 +171,24 @@ object Patcher {
             }
 
             // Recompile Smali to DEX
-            extractDir.listFiles()?.forEach { file ->
-                if (file.isDirectory && file.name.startsWith("smali")) {
-                    val dexName = if (file.name == "smali") "classes.dex"
-                    else file.name.replace("smali_", "") + ".dex"
+            val smaliDirs = extractDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("smali") }
+            addLog(Log.INFO, "Recompiling ${smaliDirs?.size ?: 0} smali directories...")
 
-                    val dexFile = File(buildDir, dexName)
-                    SmaliUtils.smaliToDex(file, dexFile, 30)
-                }
+            smaliDirs?.forEach { file ->
+                val dexName = if (file.name == "smali") "classes.dex"
+                else file.name.replace("smali_", "") + ".dex"
+
+                addLog(Log.INFO, "Compiling ${file.name} to $dexName...")
+                val dexFile = File(buildDir, dexName)
+                SmaliUtils.smaliToDex(file, dexFile, 30)
             }
 
             // Remove old signatures
+            addLog(Log.INFO, "Removing old signatures...")
             File(buildDir, "META-INF").deleteRecursively()
 
             // Create unsigned APK
+            addLog(Log.INFO, "Creating unsigned APK...")
             val unsignedApk = File(outputDir, "unsigned.apk").apply { delete() }
             ZipFile(unsignedApk).use { zipFile ->
                 val params = ZipParameters()
@@ -157,6 +211,7 @@ object Patcher {
             }
 
             // Align APK
+            addLog(Log.INFO, "Aligning APK...")
             val alignedApk = File(outputDir, "aligned.apk")
             try {
                 RandomAccessFile(unsignedApk, "r").use { raf ->
@@ -165,20 +220,29 @@ object Patcher {
                     }
                 }
             } catch (e: Exception) {
+                addLog(Log.WARN, "Alignment failed, using unaligned APK")
                 unsignedApk.copyTo(alignedApk, overwrite = true)
             }
 
             // Sign APK
+            addLog(Log.INFO, "Signing APK...")
             val signedApk = File(outputDir, "modded_signed.apk")
             try {
                 APKData.signApks(alignedApk, signedApk, context)
             } catch (e: Exception) {
+                addLog(Log.WARN, "Signing failed, returning aligned APK")
                 return@withContext alignedApk
             }
 
+            addLog(Log.INFO, "Cleaning up temporary files...")
             buildDir.deleteRecursively()
-            signedApk.takeIf { it.exists() && it.length() > 0 } ?: alignedApk
+
+            val result = signedApk.takeIf { it.exists() && it.length() > 0 } ?: alignedApk
+            addLog(Log.INFO, "Build complete: ${result.name}")
+            result
         } catch (e: Exception) {
+            addLog(Log.ERROR, "Build failed: ${e.message}")
+            e.printStackTrace()
             null
         }
     }
@@ -244,9 +308,14 @@ object Patcher {
                 )
                 repeat(injection.size) { lines.add(insertIndex++, injection[it]) }
                 smaliFile.writeText(lines.joinToString("\n"))
+                addLog(Log.INFO, "Injected library loader into $methodSignatureContains")
                 true
-            } else false
+            } else {
+                addLog(Log.WARN, "Could not find injection point in $methodSignatureContains")
+                false
+            }
         } catch (e: Exception) {
+            addLog(Log.ERROR, "Injection failed: ${e.message}")
             false
         }
     }
@@ -260,6 +329,7 @@ object Patcher {
             val targetLibDir = File(extractDir, "lib").apply { mkdirs() }
             val abis = android.os.Build.SUPPORTED_ABIS
 
+            var copiedCount = 0
             for (abi in abis) {
                 try {
                     val assetPath = "libs/$abi"
@@ -275,16 +345,20 @@ object Patcher {
                                 input.copyTo(output)
                             }
                         }
+                        copiedCount++
                     }
                 } catch (e: Exception) {
                     // Skip if no libs for this ABI
-                    // Exception will be handled in future
                 }
             }
-        } catch (e: Exception) {
-            // Silent fail – native libs are optional
-            // Exception will be handled in future
 
+            if (copiedCount > 0) {
+                addLog(Log.INFO, "Copied $copiedCount native libraries")
+            } else {
+                addLog(Log.WARN, "No native libraries found in assets")
+            }
+        } catch (e: Exception) {
+            addLog(Log.WARN, "Failed to copy native libraries: ${e.message}")
         }
     }
 

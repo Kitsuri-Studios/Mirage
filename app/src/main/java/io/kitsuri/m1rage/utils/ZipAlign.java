@@ -1,5 +1,6 @@
 package io.kitsuri.m1rage.utils;
 
+import android.util.Log;
 import androidx.annotation.NonNull;
 
 import java.io.IOException;
@@ -10,9 +11,25 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
+import io.kitsuri.m1rage.model.PatcherViewModel;
+
 public class ZipAlign {
 
+    private static final String TAG = "ZipAlign";
     private static final int maxEOCDLookup = 0xffff + 22;
+    private static PatcherViewModel viewModel;
+
+    public static void setViewModel(PatcherViewModel vm) {
+        viewModel = vm;
+    }
+
+    private static void addLog(int level, String message) {
+        if (viewModel != null) {
+            viewModel.addLog(level, message);
+        } else {
+            Log.println(level, TAG, message);
+        }
+    }
 
     public static void alignZip(RandomAccessFile file, OutputStream out) throws IOException {
         alignZip(file, out, 4, 16384);
@@ -21,7 +38,9 @@ public class ZipAlign {
     public static void alignZip(RandomAccessFile file, OutputStream out, int alignment, int soFileAlignment)
             throws IOException {
 
-        // find the end of central directory
+        addLog(Log.INFO, "Starting zip alignment");
+        addLog(Log.DEBUG, "Alignment: " + alignment + ", SO alignment: " + soFileAlignment);
+
         long seekStart;
         int readAmount;
         final long fileLength = file.length();
@@ -34,45 +53,46 @@ public class ZipAlign {
             readAmount = (int) fileLength;
         }
 
-        // find the signature
         file.seek(seekStart);
 
         int i;
         for (i = readAmount - 4; i >= 0; i--) {
             if (file.readByte() != 0x50) continue;
             file.seek(file.getFilePointer() - 1);
-            if (file.readInt() == 0x504b0506) break; // EOCD signature (in big-endian)
+            if (file.readInt() == 0x504b0506) break;
         }
 
-        if (i < 0)
+        if (i < 0) {
+            addLog(Log.ERROR, "No end-of-central-directory found");
             throw new IOException("No end-of-central-directory found");
+        }
 
         long eocdPosition = file.getFilePointer() - 4;
+        addLog(Log.DEBUG, "Found EOCD at position: " + eocdPosition);
 
-        // skip disk fields
         file.seek(eocdPosition + 10);
 
-        byte[] buf = new byte[10]; // we're keeping the total entries (2B), central dir size (4B), and the offset (4B)
+        byte[] buf = new byte[10];
         file.read(buf);
         ByteBuffer eocdBuffer = ByteBuffer.wrap(buf)
                 .order(ByteOrder.LITTLE_ENDIAN);
 
-        // read em
         short totalEntries = eocdBuffer.getShort();
         int centralDirOffset = eocdBuffer.getInt();
+
+        addLog(Log.DEBUG, "Total entries: " + totalEntries);
 
         ArrayList<Alignment> neededAlignments = new ArrayList<>();
         ArrayList<FileOffsetShift> shifts = new ArrayList<>();
 
-        // to keep track of how many bytes we've shifted through the whole file (because we're going to pad null bytes
-        // to align)
         int shiftAmount = 0;
 
         file.seek(centralDirOffset);
-        byte[] entry = new byte[46]; // not including the filename, extra field, and file comment
+        byte[] entry = new byte[46];
         ByteBuffer entryBuffer = ByteBuffer.wrap(entry)
                 .order(ByteOrder.LITTLE_ENDIAN);
 
+        int alignedFiles = 0;
         for (int ei = 0; ei < totalEntries; ei++) {
             final long entryStart = file.getFilePointer();
             file.read(entry);
@@ -92,79 +112,72 @@ public class ZipAlign {
 
             boolean soAligned = false;
 
-            // read the filename to check whether it is an .so file (of which we shall align if alignSoFiles is true)
             if (soFileAlignment != 0) {
                 byte[] filenameBuffer = new byte[entry_fileNameLen];
                 file.read(filenameBuffer);
 
                 String filename = new String(filenameBuffer, StandardCharsets.UTF_8);
                 if (filename.endsWith(".so")) {
-                    // we got to align this
-                    file.seek(fileOffset + 26); // skip all fields before filename length
+                    file.seek(fileOffset + 26);
 
-                    // read the filename & extra field length
                     ByteBuffer lengths = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
                     file.read(lengths.array());
                     short fileNameLen = lengths.getShort();
                     short extraFieldLen = lengths.getShort();
 
-                    // calculate the amount of alignment needed
                     long dataPos = fileOffset + 30 + fileNameLen + extraFieldLen + shiftAmount;
                     int wrongOffset = (int) (dataPos % soFileAlignment);
                     int alignAmount = wrongOffset == 0 ? 0 : (soFileAlignment - wrongOffset);
                     shiftAmount += alignAmount;
 
-                    // only align when alignAmount is not 0 (not already aligned)
                     if (alignAmount != 0) {
-                        // push it!
                         neededAlignments.add(new Alignment(
                                 alignAmount,
                                 fileOffset + 28,
                                 (short) (extraFieldLen + alignAmount),
                                 fileNameLen + extraFieldLen
                         ));
+                        alignedFiles++;
                     }
 
                     soAligned = true;
                 }
             }
 
-            // if this file is uncompressed, and it has not been aligned, we align it
             if (entryBuffer.getShort(10) == 0 && !soAligned) {
-                // temporarily seek to the file header to calculate the alignment amount
-                file.seek(fileOffset + 26); // skip all fields before filename length
+                file.seek(fileOffset + 26);
 
-                // read the filename & extra field length
                 ByteBuffer lengths = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
                 file.read(lengths.array());
                 short fileNameLen = lengths.getShort();
                 short extraFieldLen = lengths.getShort();
 
-                // calculate the amount of alignment needed
                 long dataPos = fileOffset + 30 + fileNameLen + extraFieldLen + shiftAmount;
                 int wrongOffset = (int) (dataPos % alignment);
                 int alignAmount = wrongOffset == 0 ? 0 : (alignment - wrongOffset);
                 shiftAmount += alignAmount;
 
-                // only align when alignAmount is not 0 (not already aligned)
                 if (alignAmount != 0) {
-                    // push it!
                     neededAlignments.add(new Alignment(
                             alignAmount,
                             fileOffset + 28,
                             (short) (extraFieldLen + alignAmount),
                             fileNameLen + extraFieldLen
                     ));
+                    alignedFiles++;
                 }
             }
 
             file.seek(entryStart + 46 + entry_fileNameLen + entry_extraFieldLen + entry_commentLen);
         }
 
-        // done analyzing! now we're going to stream the aligned zip
+        if (alignedFiles > 0) {
+            addLog(Log.INFO, "Aligning " + alignedFiles + " files");
+        }
+
         file.seek(0);
         if (neededAlignments.isEmpty()) {
-            // there is no needed alignment, stream it all!
+            addLog(Log.INFO, "No alignment needed, copying as-is");
             byte[] buffer = new byte[8192];
             int len;
             while (-1 != (len = file.read(buffer))) {
@@ -173,41 +186,32 @@ public class ZipAlign {
             return;
         }
 
-        // alignments needed! this aligns files to the defined boundaries by padding null bytes to the extra field
         for (Alignment al : neededAlignments) {
             if (al.extraFieldLenOffset != 0) {
                 passBytes(file, out, al.extraFieldLenOffset - file.getFilePointer());
             }
 
-            // write the changed extra field length (in little-endian)
             out.write(al.extraFieldLenValue & 0xFF);
             out.write((al.extraFieldLenValue >>> 8) & 0xFF);
-            file.readShort(); // mirror the new position to the file
+            file.readShort();
 
             passBytes(file, out, al.extraFieldExtensionOffset);
 
             byte[] padding = new byte[al.alignAmount];
-            out.write(padding); // sneak in null bytes
+            out.write(padding);
             out.flush();
         }
 
-        // the code below overrides the bytes that reference to other parts of the file that may be shifted
-        // due to the fact that we're padding bytes to align uncompressed data
-
-        // this changes the "file offset" defined in EOCD headers
         for (FileOffsetShift shift : shifts) {
-            // write data before this
             passBytes(file, out, shift.eocdhPosition - file.getFilePointer());
 
-            // write shifted file offset (in litte-endian)
             out.write(shift.shiftedFileOffset & 0xFF);
             out.write((shift.shiftedFileOffset >>> 8) & 0xFF);
             out.write((shift.shiftedFileOffset >>> 16) & 0xFF);
             out.write((shift.shiftedFileOffset >>> 24) & 0xFF);
-            file.readInt(); // mirror the new position to the file
+            file.readInt();
         }
 
-        // after that we need to edit the EOCDR's "EOCDH start offset" field
         passBytes(file, out, eocdPosition + 0x10 - file.getFilePointer());
         int shiftedCDOffset = centralDirOffset + shiftAmount;
 
@@ -215,10 +219,11 @@ public class ZipAlign {
         out.write((shiftedCDOffset >>> 8) & 0xFF);
         out.write((shiftedCDOffset >>> 16) & 0xFF);
         out.write((shiftedCDOffset >>> 24) & 0xFF);
-        file.readInt(); // mirror the new position change
+        file.readInt();
 
-        // write all that's left
         passBytes(file, out, file.length() - file.getFilePointer());
+
+        addLog(Log.INFO, "Zip alignment complete");
     }
 
     private static class Alignment {
@@ -234,17 +239,6 @@ public class ZipAlign {
             this.extraFieldLenValue = extraFieldLenValue;
             this.extraFieldExtensionOffset = extraFieldExtensionOffset;
         }
-
-        @NonNull
-        @Override
-        public String toString() {
-            return "Alignment{" +
-                    "alignAmount=" + alignAmount +
-                    ", extraFieldLenOffset=" + extraFieldLenOffset +
-                    ", extraFieldLenValue=" + extraFieldLenValue +
-                    ", extraFieldExtensionOffset=" + extraFieldExtensionOffset +
-                    '}';
-        }
     }
 
     private static class FileOffsetShift {
@@ -254,15 +248,6 @@ public class ZipAlign {
         public FileOffsetShift(long eocdhPosition, int shiftedFileOffset) {
             this.eocdhPosition = eocdhPosition;
             this.shiftedFileOffset = shiftedFileOffset;
-        }
-
-        @NonNull
-        @Override
-        public String toString() {
-            return "FileOffsetShift{" +
-                    "eocdhPosition=" + eocdhPosition +
-                    ", shiftedFileOffset=" + shiftedFileOffset +
-                    '}';
         }
     }
 
@@ -283,5 +268,4 @@ public class ZipAlign {
 
         out.flush();
     }
-
 }

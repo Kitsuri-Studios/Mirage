@@ -16,8 +16,12 @@ documentfileVersion = "1.1.0"
 sCommonVersion = "0a9f4f410f"
 materialVersion = "1.13.0"
 zip4jVersion = "2.11.5"
+uiGraphics = "1.7.8"
 
 [libraries]
+androidx-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "uiGraphics" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

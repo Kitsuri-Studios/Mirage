@@ -1,6 +1,5 @@
 package io.kitsuri.m1rage.utils;
 
-
 import android.util.Log;
 
 import org.antlr.runtime.CommonTokenStream;
@@ -20,35 +19,60 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.kitsuri.m1rage.model.PatcherViewModel;
+
 public class SmaliUtils {
 
     private static final String TAG = "SmaliUtils";
+    private static PatcherViewModel viewModel;
+
+    public static void setViewModel(PatcherViewModel vm) {
+        viewModel = vm;
+    }
+
+    private static void addLog(int level, String message) {
+        if (viewModel != null) {
+            viewModel.addLog(level, message);
+        } else {
+            Log.println(level, TAG, message);
+        }
+    }
 
     public static boolean smaliToDex(File smaliRootDir, File outputDex, int apiLevel) {
         if (!smaliRootDir.isDirectory()) {
-            Log.e(TAG, "Smali directory not found: " + smaliRootDir);
+            addLog(Log.ERROR, "Smali directory not found: " + smaliRootDir);
             return false;
         }
+
+        addLog(Log.INFO, "Compiling smali files to DEX...");
+        addLog(Log.DEBUG, "API Level: " + apiLevel);
 
         DexBuilder dexBuilder = apiLevel > 0
                 ? new DexBuilder(Opcodes.forApi(apiLevel))
                 : new DexBuilder(Opcodes.getDefault());
 
         List<File> smaliFiles = collectSmaliFiles(smaliRootDir);
+        addLog(Log.DEBUG, "Found " + smaliFiles.size() + " smali files");
 
+        int compiled = 0;
         for (File smaliFile : smaliFiles) {
             if (!compileSmaliFile(smaliFile, dexBuilder, apiLevel)) {
-                Log.e(TAG, "Failed to compile: " + smaliFile.getName());
+                addLog(Log.ERROR, "Failed to compile: " + smaliFile.getName());
                 return false;
+            }
+            compiled++;
+            if (compiled % 100 == 0) {
+                addLog(Log.DEBUG, "Compiled " + compiled + "/" + smaliFiles.size() + " files");
             }
         }
 
         try {
+            addLog(Log.INFO, "Writing DEX file...");
             dexBuilder.writeTo(new FileDataStore(outputDex));
-            Log.i(TAG, "DEX written to: " + outputDex);
+            addLog(Log.INFO, "DEX written to: " + outputDex.getName());
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to write DEX file", e);
+            addLog(Log.ERROR, "Failed to write DEX file: " + e.getMessage());
             return false;
         }
     }
@@ -86,6 +110,7 @@ public class SmaliUtils {
             smaliParser.smali_file_return result = parser.smali_file();
 
             if (parser.getNumberOfSyntaxErrors() > 0 || lexer.getNumberOfSyntaxErrors() > 0) {
+                addLog(Log.ERROR, "Syntax errors in: " + file.getName());
                 return false;
             }
 
@@ -101,7 +126,7 @@ public class SmaliUtils {
             return walker.getNumberOfSyntaxErrors() == 0;
 
         } catch (Exception e) {
-            Log.e(TAG, "Error compiling smali: " + file.getName(), e);
+            addLog(Log.ERROR, "Error compiling: " + file.getName() + " - " + e.getMessage());
             return false;
         }
     }

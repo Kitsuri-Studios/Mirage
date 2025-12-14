@@ -59,7 +59,9 @@ dependencies {
     implementation(libs.apksig)
     implementation(libs.axml)
     implementation(libs.crashReporter)
-
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
+    implementation(libs.ui.graphics)
     implementation(libs.apkutils)
     implementation(libs.adapters)
     implementation(libs.credits)
