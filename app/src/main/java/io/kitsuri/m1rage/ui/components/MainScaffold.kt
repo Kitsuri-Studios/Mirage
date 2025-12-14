@@ -1,6 +1,7 @@
 package io.kitsuri.m1rage.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,8 @@ import io.kitsuri.m1rage.ui.pages.SettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+var oldSelectedScreenInt = Screen.Home.ordinal // to remember old screen (for fixing transition)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScaffold() {
@@ -22,7 +25,11 @@ fun MainScaffold() {
     var backPressedOnce by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val activity = androidx.activity.compose.LocalActivity.current
+    val activity = LocalActivity.current // import the class
+
+    LaunchedEffect(selectedScreen) { // update the variable on selectedScreen change
+        oldSelectedScreenInt = selectedScreen.ordinal
+    }
 
     BackHandler {
         if (selectedScreen != Screen.Home) {
