@@ -2,6 +2,8 @@ package io.kitsuri.m1rage.ui.pages
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -9,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,12 +29,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
@@ -42,8 +47,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PatcherScreen(
     onConfigureStateChanged: (Boolean) -> Unit
-)
- {
+) {
     val viewModel = viewModel<PatcherViewModel>()
 
      LaunchedEffect(viewModel.patcherState) {
@@ -81,8 +85,8 @@ fun PatcherScreen(
                              }
                          ) {
                              Icon(
-                                 imageVector = Icons.Outlined.ArrowBack,
-                                 contentDescription = "Back"
+                                 imageVector = Icons.Outlined.Close, // for now it basically cancels the whole process so this suites better
+                                 contentDescription = "Close"
                              )
                          }
                      }
@@ -92,9 +96,11 @@ fun PatcherScreen(
          floatingActionButton = {
              when (viewModel.patcherState) {
                  PatcherState.EMPTY -> {
-                     FloatingActionButton(onClick = { showApkSourceDialog = true }) {
-                         Icon(Icons.Filled.PlayArrow, null)
-                     }
+                     ExtendedFloatingActionButton(
+                         onClick = { showApkSourceDialog = true },
+                         icon = { Icon(Icons.Filled.PlayArrow, null) },
+                         text = { Text("Get started") }
+                     )
                  }
                  PatcherState.CONFIGURATION -> {
                      ExtendedFloatingActionButton(
@@ -180,16 +186,16 @@ private fun EmptyPatcherView() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(bottom = 16.dp)
+            .padding(horizontal = 16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-
-
         Text(
             text = "Mirage Patcher",
             style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
         Card(
@@ -208,13 +214,12 @@ private fun EmptyPatcherView() {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "An Android Application to Repack APKs with HXO Framework for Dynamic Mod Loading",
+                    text = "An Android Application to Repack APKs with HXO Framework for Dynamic Mod Loading.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
             }
         }
-
     }
 }
 
@@ -264,13 +269,14 @@ private fun ConfigurationView(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = viewModel.selectedApp?.name ?: "",
+            text = viewModel.selectedApp?.name ?: "Unknown app name",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = viewModel.selectedApp?.packageName ?: "",
+            text = viewModel.selectedApp?.packageName ?: "Unknown package ID",
             style = MaterialTheme.typography.bodyLarge,
+            fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -310,6 +316,8 @@ private fun ConfigurationView(
                     }
                 } else null
             )
+
+            Spacer(Modifier.height(56.dp)) // padding for the eFAB
         }
 
         Text(
@@ -486,19 +494,30 @@ private fun InstalledAppsDialog(
     onDismiss: () -> Unit,
     onAppSelected: (String, String, String) -> Unit
 ) {
+    data class AppInfo(
+        val first: String,
+        val second: String,
+        val third: String,
+        val fourth: Drawable
+    )
+
+    var showSearchBar by remember { mutableStateOf(false) }
     val installedApps = remember {
         val pm = context.packageManager
         pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .filter { it.sourceDir != null }
             .map { appInfo ->
-                Triple(
+                AppInfo(
                     appInfo.packageName,
                     pm.getApplicationLabel(appInfo).toString(),
-                    appInfo.sourceDir
+                    appInfo.sourceDir,
+                    pm.getApplicationIcon(appInfo.packageName)
                 )
             }
-            .sortedBy { it.second }
+            .sortedBy { it.second.lowercase() } // make C and c strings same order
     }
+
+    var dynamicAppList by remember { mutableStateOf(installedApps) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -506,16 +525,68 @@ private fun InstalledAppsDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.8f)
         ) {
+            var searchText by remember { mutableStateOf("") }
+
             Column {
-                Text(
-                    text = "Select App",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(16.dp)
-                )
+                if (showSearchBar) {
+                    LaunchedEffect(searchText) {
+                        dynamicAppList = if (searchText.isNotBlank()) {
+                            installedApps.filter {
+                                it.second.startsWith(searchText, ignoreCase = true) ||
+                                it.second.contains(searchText, ignoreCase = true)
+                            }
+                        } else {
+                            installedApps
+                        }.sortedBy { it.second.lowercase() }
+                    }
+
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it },
+                        placeholder = {
+                            Text("Search apps...")
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                searchText = ""
+                                showSearchBar = false
+                            }) {
+                                Icon(Icons.Default.Close, null)
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Select App",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            modifier = Modifier.clickable {
+                                showSearchBar = true
+                            }
+                        )
+                    }
+                }
 
                 LazyColumn {
-                    items(installedApps) { (packageName, appName, apkPath) ->
+                    items(if (showSearchBar) dynamicAppList else installedApps) { (packageName, appName, apkPath, appIcon) ->
                         ListItem(
+                            leadingContent = {
+                                Image(
+                                    bitmap = appIcon.toBitmap().asImageBitmap(), // https://stackoverflow.com/a/75914556/30810698
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            },
                             headlineContent = { Text(appName) },
                             supportingContent = { Text(packageName) },
                             modifier = Modifier.clickable {
@@ -625,7 +696,7 @@ fun PatchLogsBody(
 
                     // Auto-scroll to bottom
                     LaunchedEffect(logs.size) {
-                        if (logs.isNotEmpty()) {
+                        if (logs.isNotEmpty() && !scrollState.canScrollForward) { // disable auto scroll if not at the end of list
                             scrollState.animateScrollToItem(logs.size - 1)
                         }
                     }

@@ -32,6 +32,10 @@ fun MainScaffold() {
     val scope = rememberCoroutineScope()
     var backPressedOnce by remember { mutableStateOf(false) }
 
+    LaunchedEffect(selectedScreen) {
+        oldSelectedScreenInt = selectedScreen.ordinal
+    }
+
     BackHandler {
         if (selectedScreen != Screen.Home) {
             selectedScreen = Screen.Home
