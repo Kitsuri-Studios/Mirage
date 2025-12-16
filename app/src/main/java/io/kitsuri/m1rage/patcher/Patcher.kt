@@ -18,52 +18,56 @@ object Patcher {
 
     private var viewModel: PatcherViewModel? = null
 
-    /**
-     * Set the ViewModel to enable logging to UI
-     */
     fun setViewModel(vm: PatcherViewModel) {
         viewModel = vm
-        // Set for all Java utilities
-        SmaliUtils.setViewModel(vm)
-        DexToSmali.setViewModel(vm)
         APKSigner.setViewModel(vm)
         ZipAlign.setViewModel(vm)
     }
 
-    private fun addLog(level: Int, message: String) {
-        viewModel?.addLog(level, message)
+    private fun addLog(level: Int, msg: String) {
+        viewModel?.addLog(level, msg)
     }
 
-    /**
-     * Main entry point to modify an APK:
-     * - Copies the input APK to a working directory
-     * - Extracts the APK contents
-     * - Decompiles all DEX files to Smali code
-     * - Parses the manifest to find the launcher activity
-     * - Locates the corresponding Smali file
-     * - Injects System.loadLibrary("hxo") into either the constructor or onCreate method
-     * - Copies native .so libraries from assets into the lib folder
-     * Returns the extracted directory (with modifications) on success, or null on failure.
-     */
+    private fun getFileName(context: Context, uri: Uri): String? {
+        return context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            cursor.moveToFirst()
+            cursor.getString(nameIndex)
+        }
+    }
+
+    private fun isSplitApksBundle(context: Context, uri: Uri): Boolean {
+        val fileName = getFileName(context, uri)?.lowercase() ?: return false
+        return fileName.endsWith(".apks") || fileName.endsWith(".xapk")
+    }
+
     suspend fun patchApk(
         context: Context,
-        apkUri: Uri,
-        injectionMode: String
+        apkUri: Uri
     ): File? = withContext(Dispatchers.IO) {
         try {
             val timestamp = System.currentTimeMillis()
             val workDir = File(context.getExternalFilesDir(null), "apk_workspace/$timestamp")
             workDir.mkdirs()
 
-            addLog(Log.INFO, "Creating workspace directory")
+            addLog(Log.INFO, "Creating workspace")
+
+            // Check if it's a split APKs bundle
+            val isSplitBundle = isSplitApksBundle(context, apkUri)
+
+            if (isSplitBundle) {
+                addLog(Log.INFO, "Detected split APKs bundle")
+                return@withContext patchSplitApksBundle(context, apkUri, workDir)
+            }
+
+            // Regular single APK flow
             val apkFile = File(workDir, "input.apk")
             context.contentResolver.openInputStream(apkUri)?.use { input ->
                 FileOutputStream(apkFile).use { output -> input.copyTo(output) }
             }
 
-            addLog(Log.INFO, "Extracting APK contents...")
-            val extractDir = File(workDir, "extracted")
-            extractDir.mkdirs()
+            addLog(Log.INFO, "Extracting APK...")
+            val extractDir = File(workDir, "extracted").apply { mkdirs() }
             APKInstallUtils.unzip(apkFile.absolutePath, extractDir.absolutePath)
 
             val manifestFile = File(extractDir, "AndroidManifest.xml")
@@ -72,65 +76,23 @@ object Patcher {
                 return@withContext null
             }
 
-            val launcherActivity = ManifestParser.findLauncherActivity(manifestFile)
-            if (launcherActivity == null) {
-                addLog(Log.ERROR, "Failed to find launcher activity")
+            val pkgName = ManifestParser.findPackageName(manifestFile)
+            if (pkgName == null) {
+                addLog(Log.ERROR, "Failed to read package name")
                 return@withContext null
             }
 
-            addLog(Log.INFO, "Launcher activity: $launcherActivity")
+            addLog(Log.INFO, "Package: $pkgName")
 
-            val dexFiles = extractDir.listFiles()
-                ?.filter { it.name.endsWith(".dex") }
-                ?.sortedBy { it.name }
-
-            addLog(Log.INFO, "Found ${dexFiles?.size ?: 0} DEX files")
-
-            dexFiles?.forEachIndexed { index, dexFile ->
-                val smaliDirName = when (dexFile.name) {
-                    "classes.dex" -> "smali"
-                    else -> "smali_${dexFile.nameWithoutExtension}"
-                }
-                val outputSmali = File(extractDir, smaliDirName)
-                outputSmali.mkdirs()
-
-                try {
-                    addLog(Log.INFO, "Decompiling ${dexFile.name}...")
-                    DexToSmali(true, dexFile, outputSmali, 30, dexFile.name).execute()
-                } catch (e: Exception) {
-                    addLog(Log.WARN, "Failed to decompile ${dexFile.name}: ${e.message}")
-                }
-            }
-
-            addLog(Log.INFO, "Locating launcher activity smali file...")
-            val smaliFile = locateSmali(extractDir, launcherActivity)
-            if (smaliFile == null) {
-                addLog(Log.ERROR, "Could not find smali file for $launcherActivity")
-                return@withContext null
-            }
-
-            addLog(Log.INFO, "Found: ${smaliFile.name}")
-
-            val injected = if (injectionMode == "constructor") {
-                addLog(Log.INFO, "Injecting into constructor...")
-                injectConstructor(smaliFile)
-            } else {
-                addLog(Log.INFO, "Injecting into onCreate...")
-                injectOnCreate(smaliFile)
-            }
-
-            if (!injected) {
-                addLog(Log.ERROR, "Failed to inject library loader")
-                return@withContext null
-            }
-
-            addLog(Log.INFO, "Library loader injected successfully")
-
-            addLog(Log.INFO, "Copying native libraries...")
-            addNativeLibs(context, extractDir)
+            // Apply patches
+            injectLoaderDex(context, extractDir)
+            ManifestEditor.addProvider(context, manifestFile, pkgName)
+            addLog(Log.INFO, "Provider injected")
+            injectNativeLibs(context, extractDir)
 
             addLog(Log.INFO, "Patch preparation complete")
-            extractDir // Return modified extracted directory
+            extractDir
+
         } catch (e: Exception) {
             addLog(Log.ERROR, "Patch failed: ${e.message}")
             e.printStackTrace()
@@ -138,242 +100,337 @@ object Patcher {
         }
     }
 
-    /**
-     * Recompiles the modified extracted directory back into a signed APK:
-     * - Copies all non-Smali files/folders to a build directory
-     * - Compiles each Smali directory back to its corresponding DEX file
-     * - Removes old META-INF signatures
-     * - Zips everything into an unsigned APK (using STORE compression for resources/libs)
-     * - Aligns the APK (zipalign)
-     * - Signs the APK
-     * Returns the final signed APK (falls back to aligned unsigned if signing fails).
-     */
-    suspend fun rebuildApk(context: Context, extractDir: File): File? = withContext(Dispatchers.IO) {
-        try {
-            val workDir = extractDir.parentFile!!
-            val outputDir = File(workDir.parentFile, "output").apply { mkdirs() }
-            val buildDir = File(workDir.parentFile, "build_temp").apply {
-                deleteRecursively()
-                mkdirs()
-            }
-
-            addLog(Log.INFO, "Preparing build directory...")
-
-            // Copy everything except Smali directories
-            extractDir.listFiles()?.forEach { file ->
-                if (!file.name.startsWith("smali")) {
-                    if (file.isDirectory) {
-                        file.copyRecursively(File(buildDir, file.name), overwrite = true)
-                    } else {
-                        file.copyTo(File(buildDir, file.name), overwrite = true)
-                    }
-                }
-            }
-
-            // Recompile Smali to DEX
-            val smaliDirs = extractDir.listFiles()?.filter { it.isDirectory && it.name.startsWith("smali") }
-            addLog(Log.INFO, "Recompiling ${smaliDirs?.size ?: 0} smali directories...")
-
-            smaliDirs?.forEach { file ->
-                val dexName = if (file.name == "smali") "classes.dex"
-                else file.name.replace("smali_", "") + ".dex"
-
-                addLog(Log.INFO, "Compiling ${file.name} to $dexName...")
-                val dexFile = File(buildDir, dexName)
-                SmaliUtils.smaliToDex(file, dexFile, 30)
-            }
-
-            // Remove old signatures
-            addLog(Log.INFO, "Removing old signatures...")
-            File(buildDir, "META-INF").deleteRecursively()
-
-            // Create unsigned APK
-            addLog(Log.INFO, "Creating unsigned APK...")
-            val unsignedApk = File(outputDir, "unsigned.apk").apply { delete() }
-            ZipFile(unsignedApk).use { zipFile ->
-                val params = ZipParameters()
-                buildDir.listFiles()?.forEach { file ->
-                    when {
-                        file.isDirectory && noCompressFolder(file.name) -> {
-                            params.compressionMethod = CompressionMethod.STORE
-                            zipFile.addFolder(file, params)
-                            params.compressionMethod = CompressionMethod.DEFLATE
-                        }
-                        file.isDirectory -> zipFile.addFolder(file)
-                        noCompressFile(file.name) -> {
-                            params.compressionMethod = CompressionMethod.STORE
-                            zipFile.addFile(file, params)
-                            params.compressionMethod = CompressionMethod.DEFLATE
-                        }
-                        else -> zipFile.addFile(file)
-                    }
-                }
-            }
-
-            // Align APK
-            addLog(Log.INFO, "Aligning APK...")
-            val alignedApk = File(outputDir, "aligned.apk")
-            try {
-                RandomAccessFile(unsignedApk, "r").use { raf ->
-                    FileOutputStream(alignedApk).use { out ->
-                        ZipAlign.alignZip(raf, out, 4, 4096)
-                    }
-                }
-            } catch (e: Exception) {
-                addLog(Log.WARN, "Alignment failed, using unaligned APK")
-                unsignedApk.copyTo(alignedApk, overwrite = true)
-            }
-
-            // Sign APK
-            addLog(Log.INFO, "Signing APK...")
-            val signedApk = File(outputDir, "modded_signed.apk")
-            try {
-                APKData.signApks(alignedApk, signedApk, context)
-            } catch (e: Exception) {
-                addLog(Log.WARN, "Signing failed, returning aligned APK")
-                return@withContext alignedApk
-            }
-
-            addLog(Log.INFO, "Cleaning up temporary files...")
-            buildDir.deleteRecursively()
-
-            val result = signedApk.takeIf { it.exists() && it.length() > 0 } ?: alignedApk
-            addLog(Log.INFO, "Build complete: ${result.name}")
-            result
-        } catch (e: Exception) {
-            addLog(Log.ERROR, "Build failed: ${e.message}")
-            e.printStackTrace()
-            null
+    private fun patchSplitApksBundle(
+        context: Context,
+        bundleUri: Uri,
+        workDir: File
+    ): File {
+        // Copy bundle to workspace
+        val bundleFile = File(workDir, "bundle.apks")
+        context.contentResolver.openInputStream(bundleUri)?.use { input ->
+            FileOutputStream(bundleFile).use { output -> input.copyTo(output) }
         }
-    }
 
-    /**
-     * Searches across all smali directories for the .smali file corresponding
-     * to the fully qualified launcher activity class name.
-     */
-    private fun locateSmali(extractDir: File, activityName: String): File? {
-        val smaliPath = activityName.replace('.', '/') + ".smali"
-        val smaliDirs = extractDir.listFiles()
-            ?.filter { it.isDirectory && it.name.startsWith("smali") }
-            ?.sortedBy { it.name } ?: return null
+        // Extract the bundle
+        addLog(Log.INFO, "Extracting split APKs bundle...")
+        val bundleExtractDir = File(workDir, "bundle_extracted").apply { mkdirs() }
+        APKInstallUtils.unzip(bundleFile.absolutePath, bundleExtractDir.absolutePath)
 
-        smaliDirs.forEach { smaliDir ->
-            val direct = File(smaliDir, smaliPath)
-            if (direct.exists()) return direct
+        // Find all APK files
+        val apkFiles = bundleExtractDir.walkTopDown()
+            .filter { it.isFile && it.extension == "apk" }
+            .toList()
 
-            smaliDir.walkTopDown().forEach { file ->
-                if (file.isFile && file.name == smaliPath.substringAfterLast('/')) {
-                    if (file.path.removePrefix(smaliDir.path).replace('\\', '/').drop(1) == smaliPath) {
-                        return file
-                    }
-                }
+        if (apkFiles.isEmpty()) {
+            addLog(Log.ERROR, "No APK files found in bundle")
+            throw Exception("No APK files found in bundle")
+        }
+
+        addLog(Log.INFO, "Found ${apkFiles.size} APK file(s)")
+
+        // Find base APK
+        val baseApk = apkFiles.firstOrNull {
+            it.nameWithoutExtension.contains("base", ignoreCase = true)
+        } ?: apkFiles.first()
+
+        addLog(Log.INFO, "Base APK: ${baseApk.name}")
+
+        // Extract and patch base APK
+        val extractDir = File(workDir, "extracted_base").apply { mkdirs() }
+        APKInstallUtils.unzip(baseApk.absolutePath, extractDir.absolutePath)
+
+        val manifestFile = File(extractDir, "AndroidManifest.xml")
+        if (!manifestFile.exists()) {
+            addLog(Log.ERROR, "AndroidManifest.xml not found in base APK")
+            throw Exception("AndroidManifest.xml not found in base APK")
+        }
+
+        val pkgName = ManifestParser.findPackageName(manifestFile)
+        if (pkgName == null) {
+            addLog(Log.ERROR, "Failed to read package name")
+            throw Exception("Failed to read package name")
+        }
+
+        addLog(Log.INFO, "Package: $pkgName")
+
+        // Apply patches to base APK
+        injectLoaderDex(context, extractDir)
+        ManifestEditor.addProvider(context, manifestFile, pkgName)
+        injectNativeLibs(context, extractDir)
+
+        // Store split APKs for rebuild
+        val splitsDir = File(workDir, "splits").apply { mkdirs() }
+        apkFiles.forEach { apk ->
+            if (apk != baseApk) {
+                val targetFile = File(splitsDir, apk.name)
+                apk.copyTo(targetFile, overwrite = true)
             }
         }
-        return null
+
+        addLog(Log.INFO, "Split APKs prepared for signing")
+        return extractDir
     }
 
-    private fun injectOnCreate(smaliFile: File): Boolean = injectLibraryLoad(smaliFile, "onCreate(")
+    suspend fun rebuildApk(context: Context, extractDir: File): File? =
+        withContext(Dispatchers.IO) {
+            try {
+                val workDir = extractDir.parentFile!!
+                val outputDir = File(workDir.parentFile, "output").apply { mkdirs() }
 
-    private fun injectConstructor(smaliFile: File): Boolean = injectLibraryLoad(smaliFile, "<init>")
+                // Check if we have split APKs
+                val splitsDir = File(workDir, "splits")
+                val hasSplits = splitsDir.exists() && splitsDir.listFiles()?.isNotEmpty() == true
 
-    /**
-     * Injects the System.loadLibrary("hxo") call into the specified method
-     * (either onCreate or constructor) right after the .locals directive.
-     */
-    private fun injectLibraryLoad(smaliFile: File, methodSignatureContains: String): Boolean {
-        return try {
-            val lines = smaliFile.readLines().toMutableList()
-            var inTargetMethod = false
-            var insertIndex = -1
-
-            for (i in lines.indices) {
-                val trimmed = lines[i].trim()
-                if (trimmed.startsWith(".method") && trimmed.contains(methodSignatureContains)) {
-                    inTargetMethod = true
+                if (hasSplits) {
+                    addLog(Log.INFO, "Rebuilding split APKs bundle")
+                    return@withContext rebuildSplitApksBundle(context, extractDir, outputDir, splitsDir)
                 }
-                if (inTargetMethod && trimmed.startsWith(".locals")) {
-                    insertIndex = i + 1
-                    break
-                }
+
+                // Regular single APK rebuild
+                rebuildSingleApk(context, extractDir, outputDir)
+
+            } catch (e: Exception) {
+                addLog(Log.ERROR, "Build failed: ${e.message}")
+                e.printStackTrace()
+                null
             }
+        }
 
-            if (insertIndex > 0) {
-                val injection = listOf(
-                    "",
-                    "    # Hxo Loader's Loader",
-                    "    const-string v0, \"hxo\"",
-                    "",
-                    "    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V",
-                    ""
-                )
-                repeat(injection.size) { lines.add(insertIndex++, injection[it]) }
-                smaliFile.writeText(lines.joinToString("\n"))
-                addLog(Log.INFO, "Injected library loader into $methodSignatureContains")
-                true
+    private fun rebuildSingleApk(
+        context: Context,
+        extractDir: File,
+        outputDir: File
+    ): File {
+        val workDir = extractDir.parentFile!!
+        val buildDir = File(workDir.parentFile, "build_temp").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+
+        addLog(Log.INFO, "Preparing build directory")
+
+        // Copy everything
+        extractDir.listFiles()?.forEach { f ->
+            if (f.isDirectory) {
+                f.copyRecursively(File(buildDir, f.name), overwrite = true)
             } else {
-                addLog(Log.WARN, "Could not find injection point in $methodSignatureContains")
-                false
+                f.copyTo(File(buildDir, f.name), overwrite = true)
+            }
+        }
+
+        // Remove old signatures
+        File(buildDir, "META-INF").deleteRecursively()
+
+        // Build unsigned APK
+        addLog(Log.INFO, "Creating unsigned APK")
+        val unsignedApk = File(outputDir, "unsigned.apk").apply { delete() }
+        zipDirectory(buildDir, unsignedApk)
+
+        // Align
+        addLog(Log.INFO, "Aligning APK")
+        val alignedApk = File(outputDir, "aligned.apk")
+        alignApk(unsignedApk, alignedApk)
+
+        // Sign
+        addLog(Log.INFO, "Signing APK")
+        val signedApk = File(outputDir, "modded_signed.apk")
+        APKData.signApks(alignedApk, signedApk, context)
+
+        buildDir.deleteRecursively()
+        addLog(Log.INFO, "Build complete: ${signedApk.name}")
+        return signedApk
+    }
+
+    private fun rebuildSplitApksBundle(
+        context: Context,
+        extractDir: File,
+        outputDir: File,
+        splitsDir: File
+    ): File {
+        val workDir = extractDir.parentFile!!
+        val buildDir = File(workDir.parentFile, "build_temp").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+
+
+        addLog(Log.INFO, "Rebuilding base APK")
+        extractDir.listFiles()?.forEach { f ->
+            if (f.isDirectory) {
+                f.copyRecursively(File(buildDir, f.name), overwrite = true)
+            } else {
+                f.copyTo(File(buildDir, f.name), overwrite = true)
+            }
+        }
+
+        File(buildDir, "META-INF").deleteRecursively()
+
+        val unsignedBase = File(outputDir, "base_unsigned.apk").apply { delete() }
+        zipDirectory(buildDir, unsignedBase)
+
+
+        addLog(Log.INFO, "Aligning base APK")
+        val alignedBase = File(outputDir, "base_aligned.apk")
+        alignApk(unsignedBase, alignedBase)
+
+
+        addLog(Log.INFO, "Signing base APK")
+        val signedBase = File(outputDir, "base.apk")
+        APKData.signApks(alignedBase, signedBase, context)
+
+
+        val splitFiles = splitsDir.listFiles() ?: emptyArray()
+        addLog(Log.INFO, "Processing ${splitFiles.size} split APK(s)")
+
+        val signedSplitFiles = mutableListOf<File>()
+        splitFiles.forEach { splitApk ->
+            addLog(Log.INFO, "Processing: ${splitApk.name}")
+
+            // Align
+            val alignedSplit = File(outputDir, "temp_aligned_${splitApk.name}")
+            alignApk(splitApk, alignedSplit)
+
+            // Sign
+            val signedSplit = File(outputDir, splitApk.name)
+            APKData.signApks(alignedSplit, signedSplit, context)
+            alignedSplit.delete()
+
+            signedSplitFiles.add(signedSplit)
+            addLog(Log.INFO, "Signed: ${splitApk.name}")
+        }
+
+        addLog(Log.INFO, "Creating split APKs bundle")
+        val finalBundle = File(outputDir, "modded_signed.apks")
+        ZipFile(finalBundle).use { zip ->
+            zip.addFile(signedBase)
+            signedSplitFiles.forEach { signedSplit ->
+                zip.addFile(signedSplit)
+            }
+        }
+
+        buildDir.deleteRecursively()
+        addLog(Log.INFO, "Split APKs bundle complete: ${finalBundle.name}")
+        addLog(Log.INFO, "Total APKs: ${splitFiles.size + 1}")
+
+        return finalBundle
+    }
+
+    private fun zipDirectory(buildDir: File, outputFile: File) {
+        ZipFile(outputFile).use { zip ->
+            val params = ZipParameters()
+            buildDir.listFiles()?.forEach { file ->
+                when {
+                    file.isDirectory && noCompressFolder(file.name) -> {
+                        params.compressionMethod = CompressionMethod.STORE
+                        zip.addFolder(file, params)
+                        params.compressionMethod = CompressionMethod.DEFLATE
+                    }
+                    file.isDirectory -> zip.addFolder(file)
+                    noCompressFile(file.name) -> {
+                        params.compressionMethod = CompressionMethod.STORE
+                        zip.addFile(file, params)
+                        params.compressionMethod = CompressionMethod.DEFLATE
+                    }
+                    else -> zip.addFile(file)
+                }
+            }
+        }
+    }
+
+    private fun alignApk(inputApk: File, outputApk: File) {
+        try {
+            RandomAccessFile(inputApk, "r").use { raf ->
+                FileOutputStream(outputApk).use { out ->
+                    ZipAlign.alignZip(raf, out, 4, 4096)
+                }
             }
         } catch (e: Exception) {
-            addLog(Log.ERROR, "Injection failed: ${e.message}")
-            false
+            addLog(Log.WARN, "Alignment failed, copying as-is: ${e.message}")
+            inputApk.copyTo(outputApk, overwrite = true)
         }
     }
 
     /**
-     * Copies native .so libraries from app assets (organized by ABI)
-     * into the extracted APK's lib/<abi>/ directory.
+     * Inject prebuilt loader dex (exposed for ViewModel)
      */
-    private fun addNativeLibs(context: Context, extractDir: File) {
+    fun injectLoaderDex(context: Context, extractDir: File) {
+        val dexFiles = extractDir.listFiles { file ->
+            file.isFile && file.name.startsWith("classes") && file.name.endsWith(".dex")
+        }.orEmpty()
+
+        var maxIndex = 0
+
+        for (dex in dexFiles) {
+            val name = dex.name
+            val index = when {
+                name == "classes.dex" -> 1
+                name.matches(Regex("""classes\d+\.dex""")) ->
+                    name.removePrefix("classes")
+                        .removeSuffix(".dex")
+                        .toIntOrNull() ?: 0
+                else -> 0
+            }
+            if (index > maxIndex) maxIndex = index
+        }
+
+        val nextIndex = maxIndex + 1
+        val targetName = if (nextIndex == 1) {
+            "classes.dex"
+        } else {
+            "classes$nextIndex.dex"
+        }
+
+        val target = File(extractDir, targetName)
+
+        context.assets.open("loader/hxo.dex").use { input ->
+            FileOutputStream(target).use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        addLog(Log.INFO, "Injected loader dex: $targetName")
+    }
+
+    /**
+     * Add native libraries (exposed for ViewModel)
+     */
+    fun injectNativeLibs(context: Context, extractDir: File) {
         try {
             val targetLibDir = File(extractDir, "lib").apply { mkdirs() }
             val abis = android.os.Build.SUPPORTED_ABIS
+            var copied = 0
 
-            var copiedCount = 0
             for (abi in abis) {
                 try {
                     val assetPath = "libs/$abi"
                     val libs = context.assets.list(assetPath) ?: continue
-                    if (libs.isEmpty()) continue
-
-                    val targetAbiDir = File(targetLibDir, abi).apply { mkdirs() }
+                    val abiDir = File(targetLibDir, abi).apply { mkdirs() }
 
                     for (lib in libs.filter { it.endsWith(".so") }) {
-                        val target = File(targetAbiDir, lib)
                         context.assets.open("$assetPath/$lib").use { input ->
-                            FileOutputStream(target).use { output ->
-                                input.copyTo(output)
+                            FileOutputStream(File(abiDir, lib)).use { out ->
+                                input.copyTo(out)
                             }
                         }
-                        copiedCount++
+                        copied++
                     }
-                } catch (e: Exception) {
-                    // Skip if no libs for this ABI
-                }
+                } catch (_: Exception) {}
             }
 
-            if (copiedCount > 0) {
-                addLog(Log.INFO, "Copied $copiedCount native libraries")
-            } else {
-                addLog(Log.WARN, "No native libraries found in assets")
-            }
+            addLog(
+                if (copied > 0) Log.INFO else Log.WARN,
+                "Copied $copied native libraries"
+            )
+
         } catch (e: Exception) {
-            addLog(Log.WARN, "Failed to copy native libraries: ${e.message}")
+            addLog(Log.WARN, "Failed to copy native libs: ${e.message}")
         }
     }
 
-    /**
-     * Determines which folders should be stored without compression
-     * in the final APK.
-     */
-    private fun noCompressFolder(name: String): Boolean =
+    private fun noCompressFolder(name: String) =
         name in setOf("assets", "lib", "res")
 
-    /**
-     * Determines which files should be stored without compression
-     * in the final APK.
-     */
-    private fun noCompressFile(name: String): Boolean =
-        name.equals("resources.arsc", ignoreCase = true) ||
+    private fun noCompressFile(name: String) =
+        name.equals("resources.arsc", true) ||
                 (name.startsWith("classes") && name.endsWith(".dex"))
 }

@@ -1,8 +1,16 @@
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+
+val hxoModulePath = project(":HxoLoader")
+val hxoDexBuildDir = hxoModulePath.layout.buildDirectory.dir("intermediates/dex")
+val assetsOutputDir = layout.projectDirectory.dir("src/main/assets/loader")
+val hxoProject = project(":HxoLoader")
 
 android {
     namespace = "io.kitsuri.m1rage"
@@ -38,6 +46,29 @@ android {
         compose = true
     }
 }
+
+tasks.matching { it.name.startsWith("assemble") }.configureEach {
+    dependsOn("exportHxoDex")
+}
+
+
+
+tasks.register<Exec>("exportHxoDex") {
+    group = "build"
+    description = "Copies HxoLoader dex into app assets"
+
+    dependsOn(project(":HxoLoader").tasks.named("aarToDexRelease"))
+
+    commandLine("python", "--version")
+
+    commandLine(
+        "python",
+        "${rootProject.projectDir}/scripts/export_hxo_dex.py",
+        "${rootProject.projectDir}/out",
+        "${projectDir}/src/main/assets/loader"
+    )
+}
+
 
 dependencies {
 

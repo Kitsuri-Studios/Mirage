@@ -46,13 +46,14 @@ public class SmaliUtils {
 
         addLog(Log.INFO, "Compiling smali files to DEX...");
         addLog(Log.DEBUG, "API Level: " + apiLevel);
+        logMemoryUsage("Before compilation");
 
         DexBuilder dexBuilder = apiLevel > 0
                 ? new DexBuilder(Opcodes.forApi(apiLevel))
                 : new DexBuilder(Opcodes.getDefault());
 
         List<File> smaliFiles = collectSmaliFiles(smaliRootDir);
-        addLog(Log.DEBUG, "Found " + smaliFiles.size() + " smali files");
+        addLog(Log.INFO, "Found " + smaliFiles.size() + " smali files");
 
         int compiled = 0;
         for (File smaliFile : smaliFiles) {
@@ -61,15 +62,21 @@ public class SmaliUtils {
                 return false;
             }
             compiled++;
+
             if (compiled % 100 == 0) {
-                addLog(Log.DEBUG, "Compiled " + compiled + "/" + smaliFiles.size() + " files");
+                System.gc();
             }
+
         }
+        smaliFiles.clear();
+        System.gc();
 
         try {
             addLog(Log.INFO, "Writing DEX file...");
+            logMemoryUsage("Before writing DEX");
             dexBuilder.writeTo(new FileDataStore(outputDex));
             addLog(Log.INFO, "DEX written to: " + outputDex.getName());
+            logMemoryUsage("After writing DEX");
             return true;
         } catch (Exception e) {
             addLog(Log.ERROR, "Failed to write DEX file: " + e.getMessage());
@@ -96,13 +103,23 @@ public class SmaliUtils {
     }
 
     private static boolean compileSmaliFile(File file, DexBuilder builder, int apiLevel) {
-        try (FileInputStream fis = new FileInputStream(file);
-             InputStreamReader reader = new InputStreamReader(fis, StandardCharsets.UTF_8)) {
+        FileInputStream fis = null;
+        InputStreamReader reader = null;
+        smaliFlexLexer lexer = null;
+        smaliParser parser = null;
+        CommonTree tree = null;
+        CommonTreeNodeStream nodes = null;
+        smaliTreeWalker walker = null;
 
-            smaliFlexLexer lexer = new smaliFlexLexer(reader, apiLevel);
+        try {
+            fis = new FileInputStream(file);
+            reader = new InputStreamReader(fis, StandardCharsets.UTF_8);
+
+            lexer = new smaliFlexLexer(reader, apiLevel);
             lexer.setSourceFile(file);
 
-            smaliParser parser = new smaliParser(new CommonTokenStream(lexer));
+            CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+            parser = new smaliParser(tokenStream);
             parser.setApiLevel(apiLevel);
             parser.setAllowOdex(false);
             parser.setVerboseErrors(false);
@@ -114,20 +131,64 @@ public class SmaliUtils {
                 return false;
             }
 
-            CommonTree tree = (CommonTree) result.getTree();
-            CommonTreeNodeStream nodes = new CommonTreeNodeStream(tree);
-            nodes.setTokenStream(parser.getTokenStream());
+            tree = (CommonTree) result.getTree();
+            nodes = new CommonTreeNodeStream(tree);
+            nodes.setTokenStream(tokenStream);
 
-            smaliTreeWalker walker = new smaliTreeWalker(nodes);
+            walker = new smaliTreeWalker(nodes);
             walker.setApiLevel(apiLevel);
             walker.setDexBuilder(builder);
             walker.smali_file();
 
-            return walker.getNumberOfSyntaxErrors() == 0;
+            boolean success = walker.getNumberOfSyntaxErrors() == 0;
 
+            // Explicitly null out large objects to help GC
+            walker = null;
+            nodes = null;
+            tree = null;
+            parser = null;
+            lexer = null;
+
+            return success;
+
+        } catch (OutOfMemoryError oom) {
+            walker = null;
+            nodes = null;
+            tree = null;
+            parser = null;
+            lexer = null;
+            System.gc();
+
+            return false;
         } catch (Exception e) {
             addLog(Log.ERROR, "Error compiling: " + file.getName() + " - " + e.getMessage());
             return false;
+        } finally {
+            // Ensure streams are closed
+            try {
+                if (reader != null) reader.close();
+                if (fis != null) fis.close();
+            } catch (Exception ignored) {}
+
+            // Final cleanup
+            walker = null;
+            nodes = null;
+            tree = null;
+            parser = null;
+            lexer = null;
         }
+    }
+
+    private static void logMemoryUsage(String context) {
+        Runtime runtime = Runtime.getRuntime();
+        long maxMemory = runtime.maxMemory() / 1024 / 1024;
+        long totalMemory = runtime.totalMemory() / 1024 / 1024;
+        long freeMemory = runtime.freeMemory() / 1024 / 1024;
+        long usedMemory = totalMemory - freeMemory;
+
+        addLog(Log.DEBUG, String.format(
+                "[%s] Memory: %dMB used / %dMB max",
+                context, usedMemory, maxMemory
+        ));
     }
 }

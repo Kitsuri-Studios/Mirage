@@ -17,6 +17,7 @@ sCommonVersion = "0a9f4f410f"
 materialVersion = "1.13.0"
 zip4jVersion = "2.11.5"
 uiGraphics = "1.7.8"
+appcompat = "1.7.1"
 
 [libraries]
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -53,10 +54,12 @@ themeutils = { module = "com.github.sunilpaulmathew.sCommon:themeutils", version
 translatorutils = { module = "com.github.sunilpaulmathew.sCommon:translatorutils", version.ref = "sCommonVersion" }
 material = { group = "com.google.android.material", name = "material", version.ref = "materialVersion" }
 zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4jVersion" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 

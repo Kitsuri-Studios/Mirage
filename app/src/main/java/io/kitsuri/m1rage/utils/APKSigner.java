@@ -73,7 +73,7 @@ public class APKSigner {
 
         builder.setInputApk(apkFile);
         builder.setOutputApk(output);
-        builder.setCreatedBy("APK Editor");
+        builder.setCreatedBy("Kitsuri Studios");
         builder.setV1SigningEnabled(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

@@ -230,4 +230,52 @@ object ManifestParser {
             false
         }
     }
+
+    /**
+     * Extract package name from binary AndroidManifest.xml
+     *
+     * @param manifestFile Binary AndroidManifest.xml file
+     * @return package name or null
+     */
+    fun findPackageName(manifestFile: File): String? {
+        if (!manifestFile.exists()) {
+            Log.e(TAG, "Manifest file does not exist: ${manifestFile.absolutePath}")
+            return null
+        }
+
+        return try {
+            FileInputStream(manifestFile).use { inputStream ->
+                val decoder = aXMLDecoder(inputStream)
+                val xmlString = decoder.decodeAsString()
+
+                if (xmlString.isNullOrEmpty()) {
+                    Log.e(TAG, "Failed to decode manifest - empty result")
+                    return null
+                }
+
+                val parser = Xml.newPullParser()
+                parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+                parser.setInput(java.io.StringReader(xmlString))
+
+                var eventType = parser.eventType
+                while (eventType != XmlPullParser.END_DOCUMENT) {
+                    if (eventType == XmlPullParser.START_TAG && parser.name == "manifest") {
+                        val pkg = parser.getAttributeValue(null, "package")
+                        if (!pkg.isNullOrEmpty()) {
+                            Log.i(TAG, "Found package name: $pkg")
+                            return pkg
+                        }
+                    }
+                    eventType = parser.next()
+                }
+
+                Log.e(TAG, "Package name not found in manifest")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting package name", e)
+            null
+        }
+    }
+
 }
