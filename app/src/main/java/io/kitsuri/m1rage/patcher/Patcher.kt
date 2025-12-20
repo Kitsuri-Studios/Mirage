@@ -88,6 +88,8 @@ object Patcher {
             injectLoaderDex(context, extractDir)
             ManifestEditor.addProvider(context, manifestFile, pkgName)
             addLog(Log.INFO, "Provider injected")
+            ManifestEditor.addMetaData(context, manifestFile, "io.kitsur.HXO_LOADED", "true")
+            addLog(Log.INFO, "Meta-data injected")
             injectNativeLibs(context, extractDir)
 
             addLog(Log.INFO, "Patch preparation complete")
@@ -156,6 +158,9 @@ object Patcher {
         // Apply patches to base APK
         injectLoaderDex(context, extractDir)
         ManifestEditor.addProvider(context, manifestFile, pkgName)
+        addLog(Log.INFO, "Provider injected")
+        ManifestEditor.addMetaData(context, manifestFile, "io.kitsur.HXO_LOADED", "true")
+        addLog(Log.INFO, "Meta-data injected")
         injectNativeLibs(context, extractDir)
 
         // Store split APKs for rebuild

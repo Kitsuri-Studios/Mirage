@@ -260,43 +260,103 @@ private fun ConfigurationView(
 ) {
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = viewModel.selectedApp?.name ?: "Unknown app name",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(horizontal = 24.dp)
-        )
-        Text(
-            text = viewModel.selectedApp?.packageName ?: "Unknown package ID",
-            style = MaterialTheme.typography.bodyLarge,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(horizontal = 24.dp)
-        )
-
-        // Show split APK info if applicable
         viewModel.selectedApp?.let { app ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = app.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Text(
+                        text = app.packageName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
             if (app.isSplitApk) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                        .padding(horizontal = 24.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer
                     )
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Default.Info,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Split APK Bundle",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "${app.splitCount} APK files detected",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.AutoFixHigh,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
                         Text(
-                            text = "Split APK (${app.splitCount} files)",
-                            style = MaterialTheme.typography.bodyMedium
+                            text = "HXO Framework",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Dynamic mod loading will be injected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
                         )
                     }
                 }
@@ -313,12 +373,12 @@ private fun ConfigurationView(
 
         SelectionColumn(Modifier.padding(horizontal = 24.dp)) {
             SelectionItem(
-                selected = viewModel.patchConfig.mode == PatchMode.CONSTRUCTOR,
-                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.CONSTRUCTOR) },
+                selected = viewModel.patchConfig.mode == PatchMode.DEX,
+                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.DEX) },
                 icon = Icons.Outlined.Construction,
-                title = "Constructor",
+                title = "dex",
                 desc = "Inject at <init>",
-                extraContent = if (viewModel.patchConfig.mode == PatchMode.CONSTRUCTOR) {
+                extraContent = if (viewModel.patchConfig.mode == PatchMode.DEX) {
                     {
                         TextButton(onClick = onActivitySelectorClick) {
                             Text("Select Activity")
@@ -328,12 +388,12 @@ private fun ConfigurationView(
             )
 
             SelectionItem(
-                selected = viewModel.patchConfig.mode == PatchMode.ACTIVITY_ENTRY,
-                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.ACTIVITY_ENTRY) },
+                selected = viewModel.patchConfig.mode == PatchMode.PATCH_ELF,
+                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.PATCH_ELF) },
                 icon = Icons.Outlined.Api,
-                title = "Activity Entry",
+                title = "Patch ELF",
                 desc = "Inject at onCreate",
-                extraContent = if (viewModel.patchConfig.mode == PatchMode.ACTIVITY_ENTRY) {
+                extraContent = if (viewModel.patchConfig.mode == PatchMode.PATCH_ELF) {
                     {
                         TextButton(onClick = onActivitySelectorClick) {
                             Text("Select Activity")
@@ -368,6 +428,8 @@ private fun ConfigurationView(
 
 @Composable
 private fun PatchingView(viewModel: PatcherViewModel) {
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -390,6 +452,26 @@ private fun PatchingView(viewModel: PatcherViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    val showSaveButton = viewModel.patcherState == PatcherState.FINISHED &&
+                            viewModel.outputApkFile != null &&
+                            !viewModel.savedToDownloads
+
+                    AnimatedVisibility(
+                        visible = showSaveButton,
+                        exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                viewModel.dispatch(PatcherViewModel.ViewAction.SaveToDownloads(context))
+                            }
+                        ) {
+                            Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Save")
+                        }
+                    }
                     Button(
                         modifier = Modifier.weight(1f),
                         onClick = {

@@ -8,7 +8,7 @@ import io.kitsuri.m1rage.ui.theme.MFontFamily
 @Composable
 fun TopBar(title: String) {
     CenterAlignedTopAppBar(
-        title = { Text(title,    fontFamily = MFontFamily) },
+        title = { Text(title, fontFamily = MFontFamily) },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
             containerColor = MaterialTheme.colorScheme.background
         )

@@ -29,8 +29,8 @@ enum class PatcherState {
 }
 
 enum class PatchMode {
-    CONSTRUCTOR,
-    ACTIVITY_ENTRY
+    DEX,
+    PATCH_ELF
 }
 
 data class AppInfo(
@@ -43,7 +43,7 @@ data class AppInfo(
 )
 
 data class PatchConfig(
-    val mode: PatchMode = PatchMode.CONSTRUCTOR,
+    val mode: PatchMode = PatchMode.DEX,
     val selectedActivity: String? = null,
     val debuggable: Boolean = false,
     val overrideVersionCode: Boolean = false
@@ -59,6 +59,12 @@ class PatcherViewModel : ViewModel() {
     var patchConfig by mutableStateOf(PatchConfig())
 
     var extractedDir by mutableStateOf<File?>(null)
+        private set
+
+    var outputApkFile by mutableStateOf<File?>(null)
+        private set
+
+    var savedToDownloads by mutableStateOf(false)
         private set
 
     var availableActivities by mutableStateOf<List<String>>(emptyList())
@@ -77,6 +83,7 @@ class PatcherViewModel : ViewModel() {
             )
             is ViewAction.ConfigureComplete -> patcherState = PatcherState.CONFIGURATION
             is ViewAction.StartPatch -> startPatching(action.context)
+            is ViewAction.SaveToDownloads -> saveToDownloads(action.context)
             ViewAction.Reset -> reset()
         }
     }
@@ -353,10 +360,10 @@ class PatcherViewModel : ViewModel() {
                     addLog(
                         Log.INFO,
                         "Mode: ${
-                            if (patchConfig.mode == PatchMode.CONSTRUCTOR)
-                                "Constructor Injection"
+                            if (patchConfig.mode == PatchMode.DEX)
+                                "DEX Injection"
                             else
-                                "Activity Entry Point"
+                                "Patch ELF"
                         }"
                     )
 
@@ -364,12 +371,16 @@ class PatcherViewModel : ViewModel() {
                         addLog(Log.INFO, "Target activity: $it")
                     }
 
+                    val manifestFile = File(extractedDir!!, "AndroidManifest.xml")
+
                     if (patchConfig.debuggable) {
                         addLog(Log.INFO, "Applying debuggable flag")
+                        ManifestEditor.setDebuggable(context, manifestFile, true)
                     }
 
                     if (patchConfig.overrideVersionCode) {
-                        addLog(Log.INFO, "Overriding version code")
+                        addLog(Log.INFO, "Overriding version code to 1")
+                        ManifestEditor.setVersionCode(context, manifestFile, 1)
                     }
 
                     addLog(Log.INFO, "Preparing patched APK")
@@ -390,6 +401,7 @@ class PatcherViewModel : ViewModel() {
                     }
 
                     withContext(Dispatchers.Main) {
+                        outputApkFile = signedApk
                         patcherState = PatcherState.FINISHED
                     }
 
@@ -409,9 +421,39 @@ class PatcherViewModel : ViewModel() {
         patcherState = PatcherState.EMPTY
         selectedApp = null
         extractedDir = null
+        outputApkFile = null
+        savedToDownloads = false
         logs.clear()
         patchConfig = PatchConfig()
         decompileProgress = 0f
+    }
+
+    private fun saveToDownloads(context: Context) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val sourceFile = outputApkFile ?: return@withContext
+                    val appName = selectedApp?.name?.replace(" ", "_") ?: "patched"
+                    val fileName = "${appName}_modded.${sourceFile.extension}"
+
+                    val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    )
+                    val destFile = File(downloadsDir, fileName)
+
+                    sourceFile.copyTo(destFile, overwrite = true)
+
+                    withContext(Dispatchers.Main) {
+                        addLog(Log.INFO, "Saved to Downloads: $fileName")
+                        savedToDownloads = true
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        addLog(Log.ERROR, "Failed to save: ${e.message}")
+                    }
+                }
+            }
+        }
     }
 
     sealed class ViewAction {
@@ -424,6 +466,7 @@ class PatcherViewModel : ViewModel() {
         ) : ViewAction()
         object ConfigureComplete : ViewAction()
         data class StartPatch(val context: Context) : ViewAction()
+        data class SaveToDownloads(val context: Context) : ViewAction()
         object Reset : ViewAction()
     }
 }
