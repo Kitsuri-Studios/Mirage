@@ -18,6 +18,7 @@ materialVersion = "1.13.0"
 zip4jVersion = "2.11.5"
 uiGraphics = "1.7.8"
 appcompat = "1.7.1"
+uiTextGoogleFonts = "1.10.0"
 
 [libraries]
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -55,6 +56,7 @@ translatorutils = { module = "com.github.sunilpaulmathew.sCommon:translatorutils
 material = { group = "com.google.android.material", name = "material", version.ref = "materialVersion" }
 zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4jVersion" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-compose-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-google-fonts", version.ref = "uiTextGoogleFonts" }
 
 
 [plugins]

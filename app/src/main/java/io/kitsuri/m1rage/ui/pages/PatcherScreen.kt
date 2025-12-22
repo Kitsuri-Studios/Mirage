@@ -1,9 +1,6 @@
 package io.kitsuri.m1rage.ui.pages
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,36 +26,57 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
 import io.kitsuri.m1rage.ui.components.SelectionColumn
 import io.kitsuri.m1rage.ui.components.SettingsCheckBox
+import io.kitsuri.m1rage.ui.components.TopBarConfig
 import kotlinx.coroutines.launch
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PatcherScreen(
-    onConfigureStateChanged: (Boolean) -> Unit
+    onTopBarConfigChanged: (TopBarConfig) -> Unit
 ) {
     val viewModel = viewModel<PatcherViewModel>()
 
     LaunchedEffect(viewModel.patcherState) {
-        onConfigureStateChanged(
-            viewModel.patcherState == PatcherState.CONFIGURATION
+        onTopBarConfigChanged(
+            if (viewModel.patcherState == PatcherState.CONFIGURATION) {
+                TopBarConfig(
+                    show = true,
+                    content = {
+                        TopAppBar(
+                            title = { Text("Configure Patch") },
+                            navigationIcon = {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.dispatch(PatcherViewModel.ViewAction.Reset)
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = "Close"
+                                    )
+                                }
+                            }
+                        )
+                    }
+                )
+            } else {
+                TopBarConfig(show = true)
+            }
         )
     }
 
     var showApkSourceDialog by remember { mutableStateOf(false) }
-    var showInstalledAppsDialog by remember { mutableStateOf(false) }
+    var showSelectAppsScreen by remember { mutableStateOf(false) }
     var showActivitySelectorDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -73,26 +91,30 @@ fun PatcherScreen(
         }
     }
 
+    // Show SelectAppsScreen if needed
+    if (showSelectAppsScreen) {
+        SelectAppsScreen(
+            onAppSelected = { packageName, appName, isSplit, splitApkPaths ->
+                showSelectAppsScreen = false
+                if (isSplit) {
+                    viewModel.dispatch(
+                        PatcherViewModel.ViewAction.StartDecompileFromSplits(
+                            context, packageName, appName, splitApkPaths
+                        )
+                    )
+                } else {
+                    viewModel.dispatch(
+                        PatcherViewModel.ViewAction.StartDecompile(context, null, splitApkPaths.first())
+                    )
+                }
+            },
+            onBackClick = { showSelectAppsScreen = false },
+            onTopBarConfigChanged = onTopBarConfigChanged
+        )
+        return
+    }
+
     Scaffold(
-        topBar = {
-            if (viewModel.patcherState == PatcherState.CONFIGURATION) {
-                TopAppBar(
-                    title = { Text("Configure Patch") },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                viewModel.dispatch(PatcherViewModel.ViewAction.Reset)
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Close,
-                                contentDescription = "Close"
-                            )
-                        }
-                    }
-                )
-            }
-        },
         floatingActionButton = {
             when (viewModel.patcherState) {
                 PatcherState.EMPTY -> {
@@ -120,7 +142,12 @@ fun PatcherScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(
+                    start = innerPadding.calculateStartPadding(LayoutDirection.Ltr),
+                    end = innerPadding.calculateEndPadding(LayoutDirection.Ltr),
+                    bottom = innerPadding.calculateBottomPadding()
+                )
+
         ) {
             when (viewModel.patcherState) {
                 PatcherState.EMPTY -> EmptyPatcherView()
@@ -143,35 +170,11 @@ fun PatcherScreen(
             onDismiss = { showApkSourceDialog = false },
             onStorageClick = {
                 showApkSourceDialog = false
-                // Accept any file type to allow .apks and .xapk selection
                 apkPickerLauncher.launch("*/*")
             },
             onAppListClick = {
                 showApkSourceDialog = false
-                showInstalledAppsDialog = true
-            }
-        )
-    }
-
-    if (showInstalledAppsDialog) {
-        InstalledAppsDialog(
-            context = context,
-            onDismiss = { showInstalledAppsDialog = false },
-            onAppSelected = { packageName, appName, isSplit, splitApkPaths ->
-                showInstalledAppsDialog = false
-                if (isSplit) {
-                    // For split APKs, create a temporary bundle
-                    viewModel.dispatch(
-                        PatcherViewModel.ViewAction.StartDecompileFromSplits(
-                            context, packageName, appName, splitApkPaths
-                        )
-                    )
-                } else {
-                    // Regular single APK
-                    viewModel.dispatch(
-                        PatcherViewModel.ViewAction.StartDecompile(context, null, splitApkPaths.first())
-                    )
-                }
+                showSelectAppsScreen = true
             }
         )
     }
@@ -263,76 +266,17 @@ private fun ConfigurationView(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         viewModel.selectedApp?.let { app ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = app.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        text = app.packageName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
-                }
-            }
+
+
 
             if (app.isSplitApk) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Split APK Bundle",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "${app.splitCount} APK files detected",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-            }
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 8.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
                 )
             ) {
                 Row(
@@ -340,63 +284,87 @@ private fun ConfigurationView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Outlined.AutoFixHigh,
+                        Icons.Default.Info,
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "HXO Framework",
+                            text = "Split APK Bundle",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Text(
-                            text = "Dynamic mod loading will be injected",
+                            text = "${app.splitCount} APK files detected",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                         )
                     }
                 }
             }
         }
 
-        Text(
-            text = "Patch Mode",
-            style = MaterialTheme.typography.titleLarge,
+    }
+        Card(
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = 24.dp, bottom = 12.dp)
-        )
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.AutoFixHigh,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "HXO Framework",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "Dynamic mod loading will be injected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+
 
         SelectionColumn(Modifier.padding(horizontal = 24.dp)) {
             SelectionItem(
                 selected = viewModel.patchConfig.mode == PatchMode.DEX,
                 onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.DEX) },
                 icon = Icons.Outlined.Construction,
-                title = "dex",
-                desc = "Inject at <init>",
-                extraContent = if (viewModel.patchConfig.mode == PatchMode.DEX) {
-                    {
-                        TextButton(onClick = onActivitySelectorClick) {
-                            Text("Select Activity")
-                        }
-                    }
-                } else null
+                title = "Dex Loader",
+                desc = "Injects a DEX via a custom provider that loads before the application context, enabling passing a JVM pointer to native code.",
+                extraContent = null
             )
 
             SelectionItem(
                 selected = viewModel.patchConfig.mode == PatchMode.PATCH_ELF,
                 onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.PATCH_ELF) },
                 icon = Icons.Outlined.Api,
-                title = "Patch ELF",
-                desc = "Inject at onCreate",
+                title = "ELF Poisoning",
+                desc = "Patches one of the ELF files in the APK to load hxo as a required libs",
                 extraContent = if (viewModel.patchConfig.mode == PatchMode.PATCH_ELF) {
                     {
                         TextButton(onClick = onActivitySelectorClick) {
-                            Text("Select Activity")
+                            Text("Select Library")
                         }
                     }
                 } else null
@@ -555,161 +523,6 @@ private fun ApkSourceDialog(
             }
         }
     )
-}
-
-@Composable
-private fun InstalledAppsDialog(
-    context: Context,
-    onDismiss: () -> Unit,
-    onAppSelected: (String, String, Boolean, List<String>) -> Unit
-) {
-    data class AppInfo(
-        val packageName: String,
-        val appName: String,
-        val isSplit: Boolean,
-        val splitApkPaths: List<String>,
-        val appIcon: Drawable
-    )
-
-    var showSearchBar by remember { mutableStateOf(false) }
-    val installedApps = remember {
-        val pm = context.packageManager
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { it.sourceDir != null }
-            .map { appInfo ->
-                // Detect split APKs
-                val splitDirs = appInfo.splitSourceDirs
-                val isSplit = splitDirs != null && splitDirs.isNotEmpty()
-                val apkPaths = if (isSplit) {
-                    listOf(appInfo.sourceDir) + splitDirs.toList()
-                } else {
-                    listOf(appInfo.sourceDir)
-                }
-
-                AppInfo(
-                    packageName = appInfo.packageName,
-                    appName = pm.getApplicationLabel(appInfo).toString(),
-                    isSplit = isSplit,
-                    splitApkPaths = apkPaths,
-                    appIcon = pm.getApplicationIcon(appInfo.packageName)
-                )
-            }
-            .sortedBy { it.appName.lowercase() }
-    }
-
-    var dynamicAppList by remember { mutableStateOf(installedApps) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.8f)
-        ) {
-            var searchText by remember { mutableStateOf("") }
-
-            Column {
-                if (showSearchBar) {
-                    LaunchedEffect(searchText) {
-                        dynamicAppList = if (searchText.isNotBlank()) {
-                            installedApps.filter {
-                                it.appName.startsWith(searchText, ignoreCase = true) ||
-                                        it.appName.contains(searchText, ignoreCase = true)
-                            }
-                        } else {
-                            installedApps
-                        }.sortedBy { it.appName.lowercase() }
-                    }
-
-                    OutlinedTextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        placeholder = { Text("Search apps...") },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                searchText = ""
-                                showSearchBar = false
-                            }) {
-                                Icon(Icons.Default.Close, null)
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Select App",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.clickable {
-                                showSearchBar = true
-                            }
-                        )
-                    }
-                }
-
-                LazyColumn {
-                    items(if (showSearchBar) dynamicAppList else installedApps) { app ->
-                        ListItem(
-                            leadingContent = {
-                                Image(
-                                    bitmap = app.appIcon.toBitmap().asImageBitmap(),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            },
-                            headlineContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(app.appName)
-                                    if (app.isSplit) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = "Split",
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    }
-                                }
-                            },
-                            supportingContent = {
-                                Column {
-                                    Text(app.packageName)
-                                    if (app.isSplit) {
-                                        Text(
-                                            text = "${app.splitApkPaths.size} APK files",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.clickable {
-                                onAppSelected(
-                                    app.packageName,
-                                    app.appName,
-                                    app.isSplit,
-                                    app.splitApkPaths
-                                )
-                            }
-                        )
-                        HorizontalDivider()
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

@@ -28,10 +28,13 @@ import io.kitsuri.m1rage.model.HomeViewModel
 import io.kitsuri.m1rage.model.LogsViewModel
 import io.kitsuri.m1rage.model.PatchedAppInfo
 import io.kitsuri.m1rage.navigation.HomeScreen
+import io.kitsuri.m1rage.ui.components.TopBarConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HomeScreen() {
+internal fun HomeScreen(
+    onTopBarConfigChanged: (TopBarConfig) -> Unit
+) {
     val homeViewModel = viewModel<HomeViewModel>()
     val logsViewModel = viewModel<LogsViewModel>()
     val context = LocalContext.current
@@ -40,6 +43,8 @@ internal fun HomeScreen() {
 
     LaunchedEffect(Unit) {
         homeViewModel.refreshPatchedApps(context)
+        // Show default top bar for Home screen
+        onTopBarConfigChanged(TopBarConfig(show = true))
     }
 
     var selectedDestination by remember { mutableIntStateOf(HomeScreen.HomeScreenA.ordinal) }
@@ -64,7 +69,7 @@ internal fun HomeScreen() {
             transitionSpec = {
                 val direction = if (targetState > previousDestination) 1 else -1
                 slideInHorizontally { width -> direction * width } togetherWith
-                    slideOutHorizontally { width -> -direction * width }
+                        slideOutHorizontally { width -> -direction * width }
             },
             label = "tab_transition"
         ) { destination ->

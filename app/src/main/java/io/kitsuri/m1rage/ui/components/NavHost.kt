@@ -11,7 +11,7 @@ import io.kitsuri.m1rage.ui.pages.SettingsScreen
 @Composable
 fun NavHost(
     selectedScreen: Screen,
-    onConfigureStateChanged: (Boolean) -> Unit
+    onTopBarConfigChanged: (TopBarConfig) -> Unit
 ) {
     val isLeftTab = oldSelectedScreenInt < selectedScreen.ordinal
 
@@ -35,19 +35,21 @@ fun NavHost(
     ) { targetScreen ->
         when (targetScreen) {
             Screen.Home -> {
-                onConfigureStateChanged(false)
-                HomeScreen()
+                HomeScreen(
+                    onTopBarConfigChanged = onTopBarConfigChanged
+                )
             }
 
             Screen.Patcher -> {
                 PatcherScreen(
-                    onConfigureStateChanged = onConfigureStateChanged
+                    onTopBarConfigChanged = onTopBarConfigChanged
                 )
             }
 
             Screen.Settings -> {
-                onConfigureStateChanged(false)
-                SettingsScreen()
+                SettingsScreen(
+                    onTopBarConfigChanged = onTopBarConfigChanged
+                )
             }
         }
     }

@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import io.kitsuri.m1rage.ui.components.MainScaffold
+import io.kitsuri.m1rage.ui.theme.M1rageTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,9 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme()
-            ) {
+            M1rageTheme() {
                 MainScaffold()
             }
         }
