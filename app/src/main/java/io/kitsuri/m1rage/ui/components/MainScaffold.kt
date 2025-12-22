@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.kitsuri.m1rage.navigation.Screen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -73,7 +74,8 @@ fun MainScaffold() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(   top = paddingValues.calculateTopPadding(),
+                    bottom = paddingValues.calculateBottomPadding() - 30.dp)
         ) {
             NavHost(
                 selectedScreen = selectedScreen,

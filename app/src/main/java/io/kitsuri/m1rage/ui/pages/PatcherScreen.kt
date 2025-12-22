@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
+import io.kitsuri.m1rage.ui.components.InfoCard
+import io.kitsuri.m1rage.ui.components.LocalSnackbarHost
 import io.kitsuri.m1rage.ui.components.SelectionColumn
 import io.kitsuri.m1rage.ui.components.SettingsCheckBox
 import io.kitsuri.m1rage.ui.components.TopBarConfig
@@ -45,6 +47,7 @@ fun PatcherScreen(
     onTopBarConfigChanged: (TopBarConfig) -> Unit
 ) {
     val viewModel = viewModel<PatcherViewModel>()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(viewModel.patcherState) {
         onTopBarConfigChanged(
@@ -114,56 +117,65 @@ fun PatcherScreen(
         return
     }
 
-    Scaffold(
-        floatingActionButton = {
-            when (viewModel.patcherState) {
-                PatcherState.EMPTY -> {
-                    ExtendedFloatingActionButton(
-                        onClick = { showApkSourceDialog = true },
-                        icon = { Icon(Icons.Filled.PlayArrow, null) },
-                        text = { Text("Get started") }
-                    )
-                }
-                PatcherState.CONFIGURATION -> {
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            viewModel.dispatch(
-                                PatcherViewModel.ViewAction.StartPatch(context)
-                            )
-                        },
-                        icon = { Icon(Icons.Outlined.AutoFixHigh, null) },
-                        text = { Text("Start Patch") }
-                    )
-                }
-                else -> Unit
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    start = innerPadding.calculateStartPadding(LayoutDirection.Ltr),
-                    end = innerPadding.calculateEndPadding(LayoutDirection.Ltr),
-                    bottom = innerPadding.calculateBottomPadding()
-                )
+    CompositionLocalProvider(
+        LocalSnackbarHost provides snackbarHostState
+    ) {
+        Scaffold(
+            snackbarHost = {
+                SnackbarHost(hostState = snackbarHostState)
+            },
+            floatingActionButton = {
+                when (viewModel.patcherState) {
+                    PatcherState.EMPTY -> {
+                        ExtendedFloatingActionButton(
+                            onClick = { showApkSourceDialog = true },
+                            icon = { Icon(Icons.Filled.PlayArrow, null) },
+                            text = { Text("Get started") }
+                        )
+                    }
 
-        ) {
-            when (viewModel.patcherState) {
-                PatcherState.EMPTY -> EmptyPatcherView()
-                PatcherState.DECOMPILING -> DecompilingView(viewModel)
-                PatcherState.CONFIGURATION -> ConfigurationView(
-                    viewModel = viewModel,
-                    onActivitySelectorClick = { showActivitySelectorDialog = true }
-                )
-                PatcherState.PATCHING,
-                PatcherState.FINISHED,
-                PatcherState.ERROR -> {
-                    PatchingView(viewModel)
+                    PatcherState.CONFIGURATION -> {
+                        ExtendedFloatingActionButton(
+                            onClick = {
+                                viewModel.dispatch(
+                                    PatcherViewModel.ViewAction.StartPatch(context)
+                                )
+                            },
+                            icon = { Icon(Icons.Outlined.AutoFixHigh, null) },
+                            text = { Text("Start Patch") }
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        start = innerPadding.calculateStartPadding(LayoutDirection.Ltr),
+                        end = innerPadding.calculateEndPadding(LayoutDirection.Ltr),
+                        bottom = innerPadding.calculateBottomPadding()
+                    )
+            ) {
+                when (viewModel.patcherState) {
+                    PatcherState.EMPTY -> EmptyPatcherView()
+                    PatcherState.DECOMPILING -> DecompilingView(viewModel)
+                    PatcherState.CONFIGURATION -> ConfigurationView(
+                        viewModel = viewModel,
+                        onActivitySelectorClick = { showActivitySelectorDialog = true }
+                    )
+                    PatcherState.PATCHING,
+                    PatcherState.FINISHED,
+                    PatcherState.ERROR -> {
+                        PatchingView(viewModel)
+                    }
                 }
             }
         }
     }
+
 
     if (showApkSourceDialog) {
         ApkSourceDialog(
@@ -198,7 +210,7 @@ private fun EmptyPatcherView() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -223,6 +235,10 @@ private fun EmptyPatcherView() {
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
             }
+        }
+
+        Box(modifier = Modifier.padding(vertical = 16.dp)) {
+            InfoCard()
         }
     }
 }

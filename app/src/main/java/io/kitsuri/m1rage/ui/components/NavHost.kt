@@ -1,8 +1,10 @@
 package io.kitsuri.m1rage.ui.components
 
+import android.app.Application
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import io.kitsuri.m1rage.globals.AppContext
 import io.kitsuri.m1rage.navigation.Screen
 import io.kitsuri.m1rage.ui.pages.HomeScreen
 import io.kitsuri.m1rage.ui.pages.PatcherScreen
@@ -48,7 +50,8 @@ fun NavHost(
 
             Screen.Settings -> {
                 SettingsScreen(
-                    onTopBarConfigChanged = onTopBarConfigChanged
+                    onTopBarConfigChanged = onTopBarConfigChanged,
+                    settingsManager = AppContext.settingsManager
                 )
             }
         }
