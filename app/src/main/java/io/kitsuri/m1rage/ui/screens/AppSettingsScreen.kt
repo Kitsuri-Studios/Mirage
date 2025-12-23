@@ -21,6 +21,8 @@ import io.kitsuri.m1rage.model.PatchedAppInfo
 import io.kitsuri.m1rage.model.AppSettingsManager
 import io.kitsuri.m1rage.model.SettingItem
 import io.kitsuri.m1rage.model.SettingType
+import io.kitsuri.m1rage.ui.pages.MultiChoiceSettingRow
+import io.kitsuri.m1rage.ui.pages.SettingsDivider
 import io.kitsuri.m1rage.utils.AppLibraryUtils
 import io.kitsuri.m1rage.utils.UniversalPainter
 
@@ -253,6 +255,11 @@ private fun SettingItemView(
                 }
             }
         }
+        SettingType.MULTI_CHOICE -> {
+            MultiChoiceSettingRow(item = setting)
+        }
+
+        SettingType.DIVIDER -> SettingsDivider()
     }
 }
 

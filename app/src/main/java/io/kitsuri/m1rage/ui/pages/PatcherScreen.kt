@@ -1,14 +1,11 @@
 package io.kitsuri.m1rage.ui.pages
 
-import android.content.Context
-import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -27,24 +24,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.kitsuri.m1rage.R
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
-import io.kitsuri.m1rage.ui.components.HtmlText
 import io.kitsuri.m1rage.ui.components.InfoCard
 import io.kitsuri.m1rage.ui.components.LocalSnackbarHost
 import io.kitsuri.m1rage.ui.components.SelectionColumn
 import io.kitsuri.m1rage.ui.components.SettingsCheckBox
 import io.kitsuri.m1rage.ui.components.SupportCard
 import io.kitsuri.m1rage.ui.components.TopBarConfig
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -390,18 +382,12 @@ private fun ConfigurationView(
             )
 
             SelectionItem(
-                selected = viewModel.patchConfig.mode == PatchMode.PATCH_ELF,
-                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.PATCH_ELF) },
+                selected = viewModel.patchConfig.mode == PatchMode.MAPI,
+                onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.MAPI) },
                 icon = Icons.Outlined.Api,
-                title = "ELF Poisoning",
-                desc = "Patches one of the ELF files in the APK to load hxo as a required libs",
-                extraContent = if (viewModel.patchConfig.mode == PatchMode.PATCH_ELF) {
-                    {
-                        TextButton(onClick = onActivitySelectorClick) {
-                            Text("Select Library")
-                        }
-                    }
-                } else null
+                title = "Loader + API",
+                desc = "Loads HXO along with and API for easier Modding",
+                extraContent =  null
             )
         }
 

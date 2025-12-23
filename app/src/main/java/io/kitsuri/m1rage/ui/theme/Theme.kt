@@ -11,9 +11,13 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import io.kitsuri.m1rage.activities.ThemeModes
 
 private val lightScheme = lightColorScheme(
     primary = primaryLight,
@@ -257,25 +261,40 @@ val unspecified_scheme = ColorFamily(
 
 @Composable
 fun M1rageTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = false,
-    content: @Composable() () -> Unit
+    themeMode: String,
+    dynamicColor: Boolean,
+    content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    val darkTheme = when (themeMode) {
+        ThemeModes.LIGHT -> false
+        ThemeModes.DARK -> true
+        else -> isSystemInDarkTheme()
+    }
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) dynamicDarkColorScheme(context)
+            else dynamicLightColorScheme(context)
         }
 
-        darkTheme -> darkScheme
-        else -> lightScheme
+        darkTheme -> darkColorScheme()
+        else -> lightColorScheme()
+    }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (context as Activity).window
+            window.statusBarColor = colorScheme.background.toArgb()
+            WindowCompat.getInsetsController(window, view)
+                .isAppearanceLightStatusBars = !darkTheme
+        }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography,
+        typography = Typography(),
         content = content
     )
 }
-

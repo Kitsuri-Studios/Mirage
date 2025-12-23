@@ -12,9 +12,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.Color
 import androidx.documentfile.provider.DocumentFile
+import com.google.android.material.color.MaterialColors
 import io.kitsuri.m1rage.globals.AppContext
+import io.kitsuri.m1rage.model.observeBooleanAsState
+import io.kitsuri.m1rage.model.observeStringAsState
 import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.ui.components.MainScaffold
 import io.kitsuri.m1rage.ui.pages.RepairModeScreen
@@ -34,6 +39,7 @@ class MainActivity : ComponentActivity() {
         registerSetting()
 
         setContent {
+
             SaveDirectoryPicker.launcher =
                 rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocumentTree()
@@ -58,8 +64,23 @@ class MainActivity : ComponentActivity() {
                 updateSavePathInfo(this@MainActivity)
             }
 
+            val settingsManager = AppContext.settingsManager
 
-            M1rageTheme {
+            val themeMode by settingsManager.observeStringAsState(
+                key = "theme_mode",
+                defaultValue = ThemeModes.SYSTEM
+            )
+
+            val dynamicColorEnabled by settingsManager.observeBooleanAsState(
+                key = "dynamic_color",
+                defaultValue = true
+            )
+
+
+            M1rageTheme(
+                themeMode = themeMode,
+                dynamicColor = dynamicColorEnabled
+            ) {
                 var showRepairScreen by remember { mutableStateOf(false) }
                 var repairProgress by remember { mutableStateOf(0f) }
                 var repairPercentage by remember { mutableStateOf(0) }
@@ -128,13 +149,29 @@ class MainActivity : ComponentActivity() {
     private fun registerSetting() {
         val settingsManager = AppContext.settingsManager
 
-        settingsManager.addSwitch(
-            key = "test_key",
-            title = "TestSettings",
-            defaultValue = true,
-            description = "Enable or disable Test",
-            customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_toggle_right
+
+        settingsManager.addMultiChoice(
+            key = "theme_mode",
+            title = "Theme",
+            defaultValue = "system",
+            options = listOf(
+                "system" to "System",
+                "light" to "Light",
+                "dark" to "Dark"
+            ),
+            customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_moon
         )
+
+        settingsManager.addDivider()
+
+        settingsManager.addSwitch(
+            key = "dynamic_color",
+            title = "Dynamic colors",
+            description = "Use system colors (Android 12+)",
+            defaultValue = true,
+            customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_palette
+        )
+
 
 
         settingsManager.addInfo(
@@ -150,6 +187,8 @@ class MainActivity : ComponentActivity() {
                 SaveDirectoryPicker.open()
             }
         )
+
+
     }
 
 
@@ -194,6 +233,26 @@ class MainActivity : ComponentActivity() {
                 SaveDirectoryPicker.open()
             }
         )
+        settingsManager.addButton(
+            key = "clear_cache",
+            title = "Clear cache",
+            customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_trash,
+            onClick = {
+                val context = AppContext.instance
+                val success = CleanupManager.clearAppCache(context)
+
+                if (success) {
+                    // Optional: toast/snackbar
+                    android.widget.Toast
+                        .makeText(context, "Cache cleared", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                } else {
+                    android.widget.Toast
+                        .makeText(context, "Failed to clear cache", android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+        )
 
 
 
@@ -201,7 +260,10 @@ class MainActivity : ComponentActivity() {
 
     }
 
+}
 
-
-
+object ThemeModes {
+    const val SYSTEM = "system"
+    const val LIGHT = "light"
+    const val DARK = "dark"
 }

@@ -13,6 +13,7 @@ class SettingsManager(private val context: Context) {
     val settingsList: List<SettingItem> = _settingsList
     private val listeners = mutableListOf<SettingsChangeListener>()
 
+
     interface SettingsChangeListener {
         fun onSettingChanged(key: String, value: Any)
     }
@@ -139,16 +140,39 @@ class SettingsManager(private val context: Context) {
         )
     }
 
+    fun addMultiChoice(
+        key: String,
+        title: String,
+        defaultValue: String,
+        options: List<Pair<String, String>>,
+        description: String? = null,
+        customIconResId: Int? = null
+    ) {
+        addSetting(
+            SettingItem(
+                key = key,
+                title = title,
+                type = SettingType.MULTI_CHOICE,
+                defaultValue = defaultValue,
+                options = options,
+                selectedValue = getStringValue(key, defaultValue),
+                description = description,
+                customIconResId = customIconResId
+            )
+        )
+    }
+
+
     fun addDivider() {
-        // Add an invisible info item as divider
         addSetting(
             SettingItem(
                 key = "divider_${System.currentTimeMillis()}",
                 title = "",
-                type = SettingType.INFO
+                type = SettingType.DIVIDER
             )
         )
     }
+
 
     fun clearSettings() {
         _settingsList.clear()
@@ -216,6 +240,8 @@ data class SettingItem(
     val type: SettingType,
     val defaultValue: Any = "",
     val description: String? = null,
+    val options: List<Pair<String, String>> = emptyList(),
+    val selectedValue: String? = null,
     val minValue: Float = 0f,
     val maxValue: Float = 100f,
     val suffix: String = "",
@@ -225,6 +251,8 @@ data class SettingItem(
     val customIconResId: Int? = null
 )
 
+
 enum class SettingType {
-    SWITCH, CHECKBOX, SLIDER, TEXT_FIELD, BUTTON, INFO
+    SWITCH, CHECKBOX, SLIDER, TEXT_FIELD, BUTTON, INFO, MULTI_CHOICE, DIVIDER
 }
+

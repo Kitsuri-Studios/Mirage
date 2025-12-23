@@ -11,7 +11,6 @@ import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.kitsuri.m1rage.globals.AppContext
 import io.kitsuri.m1rage.patcher.Patcher
 import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.utils.ManifestEditor
@@ -33,7 +32,7 @@ enum class PatcherState {
 
 enum class PatchMode {
     DEX,
-    PATCH_ELF
+    MAPI
 }
 
 data class AppInfo(

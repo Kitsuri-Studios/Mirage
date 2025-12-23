@@ -9,11 +9,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -24,9 +26,11 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -35,12 +39,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -199,6 +206,17 @@ fun SettingItemView(
                 }
             }
         }
+
+        SettingType.MULTI_CHOICE -> {
+            MultiChoiceSettingRow(item = setting)
+        }
+
+        SettingType.DIVIDER -> {
+            SettingsDivider()
+        }
+
+
+
     }
 }
 
@@ -492,4 +510,93 @@ fun ButtonSettingItem(setting: SettingItem, iconPainter: Painter) {
         )
     }
 }
+
+@Composable
+fun MultiChoiceSettingRow(item: SettingItem) {
+    val settingsManager = AppContext.settingsManager
+    var showDialog by remember { mutableStateOf(false) }
+
+    val currentValue =
+        settingsManager.getStringValue(item.key, item.defaultValue as String)
+
+    val currentLabel =
+        item.options.firstOrNull { it.first == currentValue }?.second ?: ""
+
+    ListItem(
+        headlineContent = { Text(item.title) },
+        supportingContent = {
+            if (currentLabel.isNotEmpty()) Text(currentLabel)
+        },
+        modifier = Modifier.clickable { showDialog = true },
+        leadingContent = {
+            item.customIconResId?.let {
+                Icon(painterResource(it), contentDescription = null)
+            }
+        }
+    )
+
+    if (showDialog) {
+        MultiChoiceDialog(
+            title = item.title,
+            options = item.options,
+            selected = currentValue,
+            onDismiss = { showDialog = false },
+            onSelect = { value ->
+                settingsManager.setStringValue(item.key, value)
+                showDialog = false
+            }
+        )
+    }
+}
+
+
+@Composable
+fun MultiChoiceDialog(
+    title: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        confirmButton = {},
+        text = {
+            Column {
+                options.forEach { (value, label) ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(value)
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == value,
+                            onClick = null
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(label)
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun SettingsDivider() {
+    androidx.compose.material3.HorizontalDivider(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant
+    )
+}
+
+
 

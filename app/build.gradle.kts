@@ -30,6 +30,7 @@ android {
             "\"${readHxoVersion()}\""
         )
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
     }
 
     buildTypes {
@@ -53,6 +54,7 @@ android {
         compose = true
         buildConfig = true
     }
+
 
 }
 

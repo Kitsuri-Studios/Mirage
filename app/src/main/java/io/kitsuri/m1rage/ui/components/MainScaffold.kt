@@ -75,7 +75,7 @@ fun MainScaffold() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(   top = paddingValues.calculateTopPadding(),
-                    bottom = paddingValues.calculateBottomPadding() - 30.dp)
+                    bottom = paddingValues.calculateBottomPadding() - 40.dp)
         ) {
             NavHost(
                 selectedScreen = selectedScreen,

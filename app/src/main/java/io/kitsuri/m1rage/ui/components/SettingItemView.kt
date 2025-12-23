@@ -11,6 +11,8 @@ import androidx.compose.ui.unit.dp
 import io.kitsuri.m1rage.model.AppSettingsManager
 import io.kitsuri.m1rage.model.SettingItem
 import io.kitsuri.m1rage.model.SettingType
+import io.kitsuri.m1rage.ui.pages.MultiChoiceSettingRow
+import io.kitsuri.m1rage.ui.pages.SettingsDivider
 
 @Composable
 fun SettingItemView(
@@ -24,6 +26,10 @@ fun SettingItemView(
         SettingType.TEXT_FIELD -> TextFieldSettingItem(setting, settingsManager)
         SettingType.BUTTON -> ButtonSettingItem(setting)
         SettingType.INFO -> InfoSettingItem(setting)
+        SettingType.MULTI_CHOICE -> {
+            MultiChoiceSettingRow(setting)
+        }
+        SettingType.DIVIDER -> SettingsDivider()
     }
 }
 

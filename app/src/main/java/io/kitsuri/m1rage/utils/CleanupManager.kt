@@ -85,4 +85,14 @@ object CleanupManager {
             Log.w(TAG, "Failed to delete workspace: ${workspaceDir.absolutePath}", e)
         }
     }
+
+    fun clearAppCache(context: Context): Boolean {
+        return try {
+            context.cacheDir?.deleteRecursively()
+            context.codeCacheDir?.deleteRecursively()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 }
