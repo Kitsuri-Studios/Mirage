@@ -24,11 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.kitsuri.m1rage.R
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
 import io.kitsuri.m1rage.ui.components.InfoCard
@@ -45,6 +47,7 @@ fun PatcherScreen(
 ) {
     val viewModel = viewModel<PatcherViewModel>()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(viewModel.patcherState) {
         onTopBarConfigChanged(
@@ -53,7 +56,7 @@ fun PatcherScreen(
                     show = true,
                     content = {
                         TopAppBar(
-                            title = { Text("Configure Patch") },
+                            title = { Text(stringResource(R.string.patcher_title_configure)) },
                             navigationIcon = {
                                 IconButton(
                                     onClick = {
@@ -62,7 +65,7 @@ fun PatcherScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.Close,
-                                        contentDescription = "Close"
+                                        contentDescription = stringResource(R.string.patcher_close_desc)
                                     )
                                 }
                             }
@@ -79,7 +82,6 @@ fun PatcherScreen(
     var showSelectAppsScreen by remember { mutableStateOf(false) }
     var showActivitySelectorDialog by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
 
     val apkPickerLauncher = rememberLauncherForActivityResult(
@@ -92,7 +94,6 @@ fun PatcherScreen(
         }
     }
 
-    // Show SelectAppsScreen if needed
     if (showSelectAppsScreen) {
         SelectAppsScreen(
             onAppSelected = { packageName, appName, isSplit, splitApkPaths ->
@@ -115,45 +116,34 @@ fun PatcherScreen(
         return
     }
 
-    CompositionLocalProvider(
-        LocalSnackbarHost provides snackbarHostState
-    ) {
+    CompositionLocalProvider(LocalSnackbarHost provides snackbarHostState) {
         Scaffold(
-            snackbarHost = {
-                SnackbarHost(hostState = snackbarHostState)
-            },
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             floatingActionButton = {
                 when (viewModel.patcherState) {
                     PatcherState.EMPTY -> {
-                        FloatingActionButton(
-                            onClick = { showApkSourceDialog = true }
-                        ) {
+                        FloatingActionButton(onClick = { showApkSourceDialog = true }) {
                             Icon(
                                 imageVector = Icons.Filled.Add,
-                                contentDescription = "Get started"
+                                contentDescription = stringResource(R.string.patcher_get_started_desc)
                             )
                         }
                     }
-
                     PatcherState.CONFIGURATION -> {
                         FloatingActionButton(
                             onClick = {
-                                viewModel.dispatch(
-                                    PatcherViewModel.ViewAction.StartPatch(context)
-                                )
+                                viewModel.dispatch(PatcherViewModel.ViewAction.StartPatch(context))
                             }
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.AutoFixHigh,
-                                contentDescription = "Start Patch"
+                                contentDescription = stringResource(R.string.patcher_start_patch_desc)
                             )
                         }
                     }
-
                     else -> Unit
                 }
             }
-
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -173,14 +163,11 @@ fun PatcherScreen(
                     )
                     PatcherState.PATCHING,
                     PatcherState.FINISHED,
-                    PatcherState.ERROR -> {
-                        PatchingView(viewModel)
-                    }
+                    PatcherState.ERROR -> PatchingView(viewModel)
                 }
             }
         }
     }
-
 
     if (showApkSourceDialog) {
         ApkSourceDialog(
@@ -202,8 +189,7 @@ fun PatcherScreen(
             selectedActivity = viewModel.patchConfig.selectedActivity,
             onDismiss = { showActivitySelectorDialog = false },
             onActivitySelected = {
-                viewModel.patchConfig =
-                    viewModel.patchConfig.copy(selectedActivity = it)
+                viewModel.patchConfig = viewModel.patchConfig.copy(selectedActivity = it)
                 showActivitySelectorDialog = false
             }
         )
@@ -221,26 +207,22 @@ private fun EmptyPatcherView() {
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "About Mirage",
+                    text = stringResource(R.string.patcher_about_mirage),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "An Android Application to Repack APKs with HXO Framework for Dynamic Mod Loading.",
+                    text = stringResource(R.string.patcher_about_description),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
-
-
             }
         }
 
@@ -249,7 +231,6 @@ private fun EmptyPatcherView() {
         }
 
         SupportCard()
-
     }
 }
 
@@ -270,7 +251,7 @@ private fun DecompilingView(viewModel: PatcherViewModel) {
                 modifier = Modifier.size(48.dp)
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Decompiling APK…")
+            Text(stringResource(R.string.patcher_decompiling))
             Text("${(viewModel.decompileProgress * 100).toInt()}%")
         }
 
@@ -292,56 +273,49 @@ private fun ConfigurationView(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         viewModel.selectedApp?.let { app ->
-
-
-
             if (app.isSplitApk) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Split APK Bundle",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                        Text(
-                            text = "${app.splitCount} APK files detected",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = stringResource(R.string.patcher_split_apk_bundle),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = stringResource(R.string.patcher_split_count, app.splitCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
         }
 
-    }
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -356,13 +330,13 @@ private fun ConfigurationView(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "HXO Framework",
+                        text = stringResource(R.string.patcher_hxo_framework),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                     Text(
-                        text = "Dynamic mod loading will be injected",
+                        text = stringResource(R.string.patcher_hxo_injected),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
                     )
@@ -370,14 +344,13 @@ private fun ConfigurationView(
             }
         }
 
-
         SelectionColumn(Modifier.padding(horizontal = 24.dp)) {
             SelectionItem(
                 selected = viewModel.patchConfig.mode == PatchMode.DEX,
                 onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.DEX) },
                 icon = Icons.Outlined.Construction,
-                title = "Dex Loader",
-                desc = "Injects a DEX via a custom provider that loads before the application context, enabling passing a JVM pointer to native code.",
+                title = stringResource(R.string.patcher_mode_dex_title),
+                desc = stringResource(R.string.patcher_mode_dex_desc),
                 extraContent = null
             )
 
@@ -385,9 +358,9 @@ private fun ConfigurationView(
                 selected = viewModel.patchConfig.mode == PatchMode.MAPI,
                 onClick = { viewModel.patchConfig = viewModel.patchConfig.copy(mode = PatchMode.MAPI) },
                 icon = Icons.Outlined.Api,
-                title = "Loader + API",
-                desc = "Loads HXO along with and API for easier Modding",
-                extraContent =  null
+                title = stringResource(R.string.patcher_mode_mapi_title),
+                desc = stringResource(R.string.patcher_mode_mapi_desc),
+                extraContent = null
             )
         }
 
@@ -399,7 +372,7 @@ private fun ConfigurationView(
                 },
             checked = viewModel.patchConfig.debuggable,
             icon = Icons.Outlined.BugReport,
-            title = "Debuggable"
+            title = stringResource(R.string.patcher_debuggable_title)
         )
 
         SettingsCheckBox(
@@ -408,8 +381,8 @@ private fun ConfigurationView(
             },
             checked = viewModel.patchConfig.overrideVersionCode,
             icon = Icons.Outlined.Numbers,
-            title = "Override Version Code",
-            desc = "Override the patched app's version code to 1"
+            title = stringResource(R.string.patcher_override_version_title),
+            desc = stringResource(R.string.patcher_override_version_desc)
         )
     }
 }
@@ -457,7 +430,7 @@ private fun PatchingView(viewModel: PatcherViewModel) {
                         ) {
                             Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save")
+                            Text(stringResource(R.string.patcher_save_button))
                         }
                     }
                     Button(
@@ -466,7 +439,7 @@ private fun PatchingView(viewModel: PatcherViewModel) {
                             viewModel.dispatch(PatcherViewModel.ViewAction.Reset)
                         }
                     ) {
-                        Text("Return")
+                        Text(stringResource(R.string.patcher_return_button))
                     }
                 }
             }
@@ -483,16 +456,14 @@ private fun ApkSourceDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select APK Source") },
+        title = { Text(stringResource(R.string.patcher_dialog_select_source)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onStorageClick),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -501,9 +472,9 @@ private fun ApkSourceDialog(
                         Icon(Icons.Default.Folder, null, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text("Select from storage")
+                            Text(stringResource(R.string.patcher_source_storage))
                             Text(
-                                text = "APK, APKS, or XAPK files",
+                                text = stringResource(R.string.patcher_source_storage_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -515,9 +486,7 @@ private fun ApkSourceDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onAppListClick),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -526,9 +495,9 @@ private fun ApkSourceDialog(
                         Icon(Icons.Default.Apps, null, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text("Select from installed apps")
+                            Text(stringResource(R.string.patcher_source_apps))
                             Text(
-                                text = "Supports split APKs",
+                                text = stringResource(R.string.patcher_source_apps_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -539,7 +508,7 @@ private fun ApkSourceDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.patcher_dialog_cancel))
             }
         }
     )
@@ -554,7 +523,7 @@ private fun ActivitySelectorDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Activity") },
+        title = { Text(stringResource(R.string.patcher_dialog_select_activity)) },
         text = {
             LazyColumn {
                 items(activities) { activity ->
@@ -580,7 +549,7 @@ private fun ActivitySelectorDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close")
+                Text(stringResource(R.string.patcher_dialog_close))
             }
         }
     )
@@ -603,17 +572,11 @@ fun PatchLogsBody(
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .animateContentSize(
-                    animationSpec = spring(stiffness = Spring.StiffnessLow)
-                )
+                .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow))
         ) {
-            ShimmerAnimation(
-                enabled = patchState == PatcherState.PATCHING
-            ) { brush ->
+            ShimmerAnimation(enabled = patchState == PatcherState.PATCHING) { brush ->
                 ProvideTextStyle(
-                    MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace
-                    )
+                    MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
                 ) {
                     val scrollState = rememberLazyListState()
 
@@ -641,13 +604,12 @@ fun PatchLogsBody(
                     LaunchedEffect(logs.size) {
                         if (logs.isNotEmpty()) {
                             if (patchState == PatcherState.PATCHING) {
-                                scrollState.scrollToItem(logs.lastIndex) // instant
+                                scrollState.scrollToItem(logs.lastIndex)
                             } else {
-                                scrollState.animateScrollToItem(logs.lastIndex) // smooth
+                                scrollState.animateScrollToItem(logs.lastIndex)
                             }
                         }
                     }
-
                 }
             }
         }

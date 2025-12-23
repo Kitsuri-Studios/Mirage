@@ -1,11 +1,149 @@
 <resources>
     <string name="app_name">Mirage</string>
 
-    <string name="home_shizuku_warning">Some functions unavailable</string>
-    <string name="home_api_version">API Version</string>
-    <string name="home_lspatch_version">LSPatch Version</string>
-    <string name="home_framework_version">Framework Version</string>
-    <string name="home_system_version">System Version</string>
+        <!-- Patcher log messages -->
+        <string name="patcher_creating_workspace">Creating workspace: %s</string>
+        <string name="patcher_detected_split_bundle">Detected split APKs bundle</string>
+        <string name="patcher_extracting_apk">Extracting APK...</string>
+        <string name="patcher_manifest_not_found">AndroidManifest.xml not found</string>
+        <string name="patcher_failed_read_package">Failed to read package name</string>
+        <string name="patcher_package_info">Package: %s</string>
+        <string name="patcher_provider_injected">Provider injected</string>
+        <string name="patcher_metadata_injected">Meta-data injected</string>
+        <string name="patcher_patch_preparation_complete">Patch preparation complete</string>
+        <string name="patcher_patch_failed">Patch failed: %s</string>
+
+        <string name="patcher_extracting_bundle">Extracting split APKs bundle...</string>
+        <string name="patcher_found_apks_count">Found %d APK file(s)</string>
+        <string name="patcher_base_apk">Base APK: %s</string>
+        <string name="patcher_manifest_not_found_base">AndroidManifest.xml not found in base APK</string>
+        <string name="patcher_no_apks_in_bundle">No APK files found in bundle</string>
+        <string name="patcher_split_apks_prepared">Split APKs prepared for signing</string>
+
+        <string name="patcher_extracting_split_for_patching">Extracting %s for manifest patching</string>
+        <string name="patcher_setting_version_code">Setting version code to %d in %s</string>
+        <string name="patcher_setting_debuggable">Setting debuggable=%s in %s</string>
+        <string name="patcher_failed_patch_split">Failed to patch %s: %s, using original</string>
+
+        <string name="patcher_rebuilding_split_bundle">Rebuilding split APKs bundle</string>
+        <string name="patcher_preparing_build_dir">Preparing build directory</string>
+        <string name="patcher_creating_unsigned_apk">Creating unsigned APK</string>
+        <string name="patcher_aligning_apk">Aligning APK</string>
+        <string name="patcher_signing_apk">Signing APK</string>
+        <string name="patcher_build_complete">Build complete: %s</string>
+        <string name="patcher_alignment_failed">Alignment failed, copying as-is: %s</string>
+        <string name="patcher_build_failed">Build failed: %s</string>
+
+        <string name="patcher_rebuilding_base_apk">Rebuilding base APK</string>
+        <string name="patcher_aligning_base">Aligning base APK</string>
+        <string name="patcher_signing_base">Signing base APK</string>
+        <string name="patcher_processing_split_count">Processing %d split APK(s)</string>
+        <string name="patcher_processing_split">Processing: %s</string>
+        <string name="patcher_signed_split">Signed: %s</string>
+        <string name="patcher_creating_bundle">Creating split APKs bundle</string>
+        <string name="patcher_bundle_complete">Split APKs bundle complete: %s</string>
+        <string name="patcher_total_apks">Total APKs: %d</string>
+        <string name="patcher_invalid_splits_dir">Splits directory is from wrong workspace!</string>
+
+        <string name="patcher_injected_loader_dex">Injected loader dex: %s</string>
+        <string name="patcher_copied_native_libs">Copied %d native libraries</string>
+        <string name="patcher_no_native_libs">Copied 0 native libraries</string>
+        <string name="patcher_failed_copy_native_libs">Failed to copy native libs: %s</string>
+
+    <!-- Patch Screen -->
+        <string name="patcher_title_configure">Configure Patch</string>
+        <string name="patcher_close_desc">Close</string>
+        <string name="patcher_get_started_desc">Get started</string>
+        <string name="patcher_start_patch_desc">Start Patch</string>
+
+        <!-- EmptyPatcherView -->
+        <string name="patcher_about_mirage">About Mirage</string>
+        <string name="patcher_about_description">An Android Application to Repack APKs with HXO Framework for Dynamic Mod Loading.</string>
+
+        <!-- DecompilingView -->
+        <string name="patcher_decompiling">Decompiling APK…</string>
+
+        <!-- ConfigurationView -->
+        <string name="patcher_split_apk_bundle">Split APK Bundle</string>
+        <string name="patcher_split_count">%d APK files detected</string>
+        <string name="patcher_hxo_framework">HXO Framework</string>
+        <string name="patcher_hxo_injected">Dynamic mod loading will be injected</string>
+
+        <string name="patcher_mode_dex_title">Dex Loader</string>
+        <string name="patcher_mode_dex_desc">Injects a DEX via a custom provider that loads before the application context, enabling passing a JVM pointer to native code.</string>
+
+        <string name="patcher_mode_mapi_title">Loader + API (UnImplemented)</string>
+        <string name="patcher_mode_mapi_desc">Loads HXO along with and API for easier Modding</string>
+
+        <string name="patcher_debuggable_title">Debuggable</string>
+        <string name="patcher_override_version_title">Override Version Code</string>
+        <string name="patcher_override_version_desc">Override the patched app\'s version code to 1</string>
+
+        <!-- PatchingView -->
+        <string name="patcher_save_button">Save</string>
+        <string name="patcher_return_button">Return</string>
+
+        <!-- ApkSourceDialog -->
+        <string name="patcher_dialog_select_source">Select APK Source</string>
+        <string name="patcher_source_storage">Select from storage</string>
+        <string name="patcher_source_storage_desc">APK, APKS, or XAPK files</string>
+        <string name="patcher_source_apps">Select from installed apps</string>
+        <string name="patcher_source_apps_desc">Supports split APKs</string>
+        <string name="patcher_dialog_cancel">Cancel</string>
+
+        <!-- ActivitySelectorDialog -->
+        <string name="patcher_dialog_select_activity">Select Activity</string>
+        <string name="patcher_dialog_close">Close</string>
+
+
+        <!-- PatcherViewModel log messages -->
+    <string name="vm_processing_split_installed">Processing split APKs from installed app</string>
+    <string name="vm_package_info">Package: %s</string>
+    <string name="vm_found_apks">Found %d APK file(s)</string>
+    <string name="vm_copying_splits">Copying split APKs...</string>
+    <string name="vm_extracting_base">Extracting base APK...</string>
+    <string name="vm_copied_split">Copied split: %s</string>
+    <string name="vm_manifest_not_found_error">AndroidManifest.xml not found in base APK</string>
+    <string name="vm_parsing_manifest">Parsing AndroidManifest.xml...</string>
+    <string name="vm_injecting_loader_dex">Injecting loader DEX...</string>
+    <string name="vm_injecting_provider">Injecting provider...</string>
+    <string name="vm_adding_native_libs">Adding native libraries...</string>
+    <string name="vm_found_activities">Found %d activities</string>
+    <string name="vm_decompile_success">Decompilation completed successfully</string>
+    <string name="vm_error_generic">Error: %s</string>
+
+    <string name="vm_starting_decompile">Starting decompilation process...</string>
+    <string name="vm_detected_split_bundle">Detected split APKs bundle (.apks/.xapk)</string>
+    <string name="vm_reading_apk_storage">Reading APK from storage...</string>
+    <string name="vm_found_in_bundle">Found %d APK file(s) in bundle</string>
+    <string name="vm_reading_installed_app">Reading APK from installed app...</string>
+    <string name="vm_extracting_split_bundle">Extracting split APKs bundle...</string>
+    <string name="vm_extracting_apk_contents">Extracting APK contents...</string>
+    <string name="vm_decompiling_dex">Decompiling DEX files...</string>
+    <string name="vm_failed_extract">Failed to extract APK</string>
+
+    <string name="vm_starting_patch">Starting patch process</string>
+    <string name="vm_processing_split_count">Processing split APKs (%d files)</string>
+    <string name="vm_mode_dex">DEX Injection</string>
+    <string name="vm_mode_mapi">Patch ELF</string>
+    <string name="vm_mode_label">Mode: %s</string>
+    <string name="vm_target_activity">Target activity: %s</string>
+    <string name="vm_applying_debuggable">Applying debuggable flag to base APK</string>
+    <string name="vm_overriding_version_code">Overriding version code to 1 in base APK</string>
+    <string name="vm_split_will_be_patched">Split APKs will be patched with matching version code and debuggable flag</string>
+    <string name="vm_preparing_patched">Preparing patched APK</string>
+    <string name="vm_rebuild_success">APK rebuilt successfully</string>
+    <string name="vm_output_path">Output: %s</string>
+    <string name="vm_output_size">Size: %d MB</string>
+    <string name="vm_split_bundle_ready">Split APKs bundle ready for installation</string>
+    <string name="vm_matching_signatures">All APKs have matching version codes and signatures</string>
+    <string name="vm_install_instructions">Use \'adb install-multiple\' or SAI app to install</string>
+    <string name="vm_patch_failed">Patch failed: %s</string>
+
+    <string name="vm_saved_to_folder">Saved to selected folder: %s</string>
+    <string name="vm_saved_to_downloads">Saved to Downloads/Mirage: %s</string>
+    <string name="vm_save_failed">Failed to save: %s</string>
+
     <string name="home_device">Device</string>
     <string name="home_system_abi">System ABI</string>
     <string name="home_info_copied">Copied to clipboard</string>

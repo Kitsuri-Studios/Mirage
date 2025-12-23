@@ -3,6 +3,7 @@ package io.kitsuri.m1rage.patcher
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import io.kitsuri.m1rage.R
 import io.kitsuri.m1rage.model.PatcherViewModel
 import io.kitsuri.m1rage.utils.*
 import kotlinx.coroutines.Dispatchers
@@ -55,53 +56,50 @@ object Patcher {
             }
             workDir.mkdirs()
 
-            addLog(Log.INFO, "Creating workspace: ${workDir.name}")
+            addLog(Log.INFO, context.getString(R.string.patcher_creating_workspace, workDir.name))
 
-            // Check if it's a split APKs bundle
             val isSplitBundle = isSplitApksBundle(context, apkUri)
 
             if (isSplitBundle) {
-                addLog(Log.INFO, "Detected split APKs bundle")
+                addLog(Log.INFO, context.getString(R.string.patcher_detected_split_bundle))
                 return@withContext patchSplitApksBundle(context, apkUri, workDir)
             }
 
-            // Regular single APK flow
             val apkFile = File(workDir, "input.apk")
             context.contentResolver.openInputStream(apkUri)?.use { input ->
                 FileOutputStream(apkFile).use { output -> input.copyTo(output) }
             }
 
-            addLog(Log.INFO, "Extracting APK...")
+            addLog(Log.INFO, context.getString(R.string.patcher_extracting_apk))
             val extractDir = File(workDir, "extracted").apply { mkdirs() }
             APKInstallUtils.unzip(apkFile.absolutePath, extractDir.absolutePath)
 
             val manifestFile = File(extractDir, "AndroidManifest.xml")
             if (!manifestFile.exists()) {
-                addLog(Log.ERROR, "AndroidManifest.xml not found")
+                addLog(Log.ERROR, context.getString(R.string.patcher_manifest_not_found))
                 return@withContext null
             }
 
             val pkgName = ManifestParser.findPackageName(manifestFile)
             if (pkgName == null) {
-                addLog(Log.ERROR, "Failed to read package name")
+                addLog(Log.ERROR, context.getString(R.string.patcher_failed_read_package))
                 return@withContext null
             }
 
-            addLog(Log.INFO, "Package: $pkgName")
+            addLog(Log.INFO, context.getString(R.string.patcher_package_info, pkgName))
 
-            // Apply patches
             injectLoaderDex(context, extractDir)
             ManifestEditor.addProvider(context, manifestFile, pkgName)
-            addLog(Log.INFO, "Provider injected")
+            addLog(Log.INFO, context.getString(R.string.patcher_provider_injected))
             ManifestEditor.addMetaData(context, manifestFile, "io.kitsur.HXO_LOADED", "true")
-            addLog(Log.INFO, "Meta-data injected")
+            addLog(Log.INFO, context.getString(R.string.patcher_metadata_injected))
             injectNativeLibs(context, extractDir)
 
-            addLog(Log.INFO, "Patch preparation complete")
+            addLog(Log.INFO, context.getString(R.string.patcher_patch_preparation_complete))
             extractDir
 
         } catch (e: Exception) {
-            addLog(Log.ERROR, "Patch failed: ${e.message}")
+            addLog(Log.ERROR, context.getString(R.string.patcher_patch_failed, e.message ?: "Unknown error"))
             e.printStackTrace()
             null
         }
@@ -112,63 +110,56 @@ object Patcher {
         bundleUri: Uri,
         workDir: File
     ): File {
-        // Copy bundle to workspace
         val bundleFile = File(workDir, "bundle.apks")
         context.contentResolver.openInputStream(bundleUri)?.use { input ->
             FileOutputStream(bundleFile).use { output -> input.copyTo(output) }
         }
 
-        // Extract the bundle
-        addLog(Log.INFO, "Extracting split APKs bundle...")
+        addLog(Log.INFO, context.getString(R.string.patcher_extracting_bundle))
         val bundleExtractDir = File(workDir, "bundle_extracted").apply { mkdirs() }
         APKInstallUtils.unzip(bundleFile.absolutePath, bundleExtractDir.absolutePath)
 
-        // Find all APK files
         val apkFiles = bundleExtractDir.walkTopDown()
             .filter { it.isFile && it.extension == "apk" }
             .toList()
 
         if (apkFiles.isEmpty()) {
-            addLog(Log.ERROR, "No APK files found in bundle")
-            throw Exception("No APK files found in bundle")
+            addLog(Log.ERROR, context.getString(R.string.patcher_no_apks_in_bundle))
+            throw Exception(context.getString(R.string.patcher_no_apks_in_bundle))
         }
 
-        addLog(Log.INFO, "Found ${apkFiles.size} APK file(s)")
+        addLog(Log.INFO, context.getString(R.string.patcher_found_apks_count, apkFiles.size))
 
-        // Find base APK
         val baseApk = apkFiles.firstOrNull {
             it.nameWithoutExtension.contains("base", ignoreCase = true)
         } ?: apkFiles.first()
 
-        addLog(Log.INFO, "Base APK: ${baseApk.name}")
+        addLog(Log.INFO, context.getString(R.string.patcher_base_apk, baseApk.name))
 
-        // Extract and patch base APK
         val extractDir = File(workDir, "extracted_base").apply { mkdirs() }
         APKInstallUtils.unzip(baseApk.absolutePath, extractDir.absolutePath)
 
         val manifestFile = File(extractDir, "AndroidManifest.xml")
         if (!manifestFile.exists()) {
-            addLog(Log.ERROR, "AndroidManifest.xml not found in base APK")
-            throw Exception("AndroidManifest.xml not found in base APK")
+            addLog(Log.ERROR, context.getString(R.string.patcher_manifest_not_found_base))
+            throw Exception(context.getString(R.string.patcher_manifest_not_found_base))
         }
 
         val pkgName = ManifestParser.findPackageName(manifestFile)
         if (pkgName == null) {
-            addLog(Log.ERROR, "Failed to read package name")
-            throw Exception("Failed to read package name")
+            addLog(Log.ERROR, context.getString(R.string.patcher_failed_read_package))
+            throw Exception(context.getString(R.string.patcher_failed_read_package))
         }
 
-        addLog(Log.INFO, "Package: $pkgName")
+        addLog(Log.INFO, context.getString(R.string.patcher_package_info, pkgName))
 
-        // Apply patches to base APK
         injectLoaderDex(context, extractDir)
         ManifestEditor.addProvider(context, manifestFile, pkgName)
-        addLog(Log.INFO, "Provider injected")
+        addLog(Log.INFO, context.getString(R.string.patcher_provider_injected))
         ManifestEditor.addMetaData(context, manifestFile, "io.kitsur.HXO_LOADED", "true")
-        addLog(Log.INFO, "Meta-data injected")
+        addLog(Log.INFO, context.getString(R.string.patcher_metadata_injected))
         injectNativeLibs(context, extractDir)
 
-        // Store split APKs for rebuild
         val splitsDir = File(workDir, "splits").apply { mkdirs() }
         apkFiles.forEach { apk ->
             if (apk != baseApk) {
@@ -177,7 +168,7 @@ object Patcher {
             }
         }
 
-        addLog(Log.INFO, "Split APKs prepared for signing")
+        addLog(Log.INFO, context.getString(R.string.patcher_split_apks_prepared))
         return extractDir
     }
 
@@ -189,42 +180,37 @@ object Patcher {
         debuggable: Boolean? = null
     ): File {
         try {
-            // Extract split APK
             val splitExtractDir = File(workDir, "temp_split_${splitApk.nameWithoutExtension}").apply {
                 deleteRecursively()
                 mkdirs()
             }
 
-            addLog(Log.DEBUG, "Extracting ${splitApk.name} for manifest patching")
+            addLog(Log.DEBUG, context.getString(R.string.patcher_extracting_split_for_patching, splitApk.name))
             APKInstallUtils.unzip(splitApk.absolutePath, splitExtractDir.absolutePath)
 
-            // Modify manifest if it exists
             val manifestFile = File(splitExtractDir, "AndroidManifest.xml")
             if (manifestFile.exists()) {
-                if (versionCode != null) {
-                    addLog(Log.DEBUG, "Setting version code to $versionCode in ${splitApk.name}")
-                    ManifestEditor.setVersionCode(context, manifestFile, versionCode)
+                versionCode?.let {
+                    addLog(Log.DEBUG, context.getString(R.string.patcher_setting_version_code, it, splitApk.name))
+                    ManifestEditor.setVersionCode(context, manifestFile, it)
                 }
-
-                if (debuggable != null) {
-                    addLog(Log.DEBUG, "Setting debuggable=$debuggable in ${splitApk.name}")
-                    ManifestEditor.setDebuggable(context, manifestFile, debuggable)
+                debuggable?.let {
+                    addLog(Log.DEBUG, context.getString(R.string.patcher_setting_debuggable, it.toString(), splitApk.name))
+                    ManifestEditor.setDebuggable(context, manifestFile, it)
                 }
             }
 
-            // Repack the split APK
             File(splitExtractDir, "META-INF").deleteRecursively()
 
             val repackedSplit = File(workDir, "repacked_${splitApk.name}")
             zipDirectory(splitExtractDir, repackedSplit)
 
-            // Cleanup temp extraction
             splitExtractDir.deleteRecursively()
 
             return repackedSplit
 
         } catch (e: Exception) {
-            addLog(Log.WARN, "Failed to patch ${splitApk.name}: ${e.message}, using original")
+            addLog(Log.WARN, context.getString(R.string.patcher_failed_patch_split, splitApk.name, e.message ?: "Unknown"))
             return splitApk
         }
     }
@@ -235,20 +221,18 @@ object Patcher {
                 val workDir = extractDir.parentFile!!
                 val outputDir = File(workDir.parentFile, "output").apply { mkdirs() }
 
-                // Check if we have split APKs
                 val splitsDir = File(workDir, "splits")
                 val hasSplits = splitsDir.exists() && splitsDir.listFiles()?.isNotEmpty() == true
 
                 if (hasSplits) {
-                    addLog(Log.INFO, "Rebuilding split APKs bundle")
+                    addLog(Log.INFO, context.getString(R.string.patcher_rebuilding_split_bundle))
                     return@withContext rebuildSplitApksBundle(context, extractDir, outputDir, splitsDir)
                 }
 
-                // Regular single APK rebuild
                 rebuildSingleApk(context, extractDir, outputDir)
 
             } catch (e: Exception) {
-                addLog(Log.ERROR, "Build failed: ${e.message}")
+                addLog(Log.ERROR, context.getString(R.string.patcher_build_failed, e.message ?: "Unknown error"))
                 e.printStackTrace()
                 null
             }
@@ -265,9 +249,8 @@ object Patcher {
             mkdirs()
         }
 
-        addLog(Log.INFO, "Preparing build directory")
+        addLog(Log.INFO, context.getString(R.string.patcher_preparing_build_dir))
 
-        // Copy everything
         extractDir.listFiles()?.forEach { f ->
             if (f.isDirectory) {
                 f.copyRecursively(File(buildDir, f.name), overwrite = true)
@@ -276,26 +259,22 @@ object Patcher {
             }
         }
 
-        // Remove old signatures
         File(buildDir, "META-INF").deleteRecursively()
 
-        // Build unsigned APK
-        addLog(Log.INFO, "Creating unsigned APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_creating_unsigned_apk))
         val unsignedApk = File(outputDir, "unsigned.apk").apply { delete() }
         zipDirectory(buildDir, unsignedApk)
 
-        // Align
-        addLog(Log.INFO, "Aligning APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_aligning_apk))
         val alignedApk = File(outputDir, "aligned.apk")
         alignApk(unsignedApk, alignedApk)
 
-        // Sign
-        addLog(Log.INFO, "Signing APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_signing_apk))
         val signedApk = File(outputDir, "modded_signed.apk")
         APKData.signApks(alignedApk, signedApk, context)
 
         buildDir.deleteRecursively()
-        addLog(Log.INFO, "Build complete: ${signedApk.name}")
+        addLog(Log.INFO, context.getString(R.string.patcher_build_complete, signedApk.name))
         return signedApk
     }
 
@@ -308,8 +287,8 @@ object Patcher {
         val workDir = extractDir.parentFile!!
 
         if (!splitsDir.canonicalPath.startsWith(workDir.canonicalPath)) {
-            addLog(Log.ERROR, "Splits directory is from wrong workspace!")
-            throw Exception("Invalid splits directory")
+            addLog(Log.ERROR, context.getString(R.string.patcher_invalid_splits_dir))
+            throw Exception(context.getString(R.string.patcher_invalid_splits_dir))
         }
 
         val buildDir = File(workDir.parentFile, "build_temp").apply {
@@ -317,7 +296,7 @@ object Patcher {
             mkdirs()
         }
 
-        addLog(Log.INFO, "Rebuilding base APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_rebuilding_base_apk))
         extractDir.listFiles()?.forEach { f ->
             if (f.isDirectory) {
                 f.copyRecursively(File(buildDir, f.name), overwrite = true)
@@ -331,73 +310,54 @@ object Patcher {
         val unsignedBase = File(outputDir, "base_unsigned.apk").apply { delete() }
         zipDirectory(buildDir, unsignedBase)
 
-        addLog(Log.INFO, "Aligning base APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_aligning_base))
         val alignedBase = File(outputDir, "base_aligned.apk")
         alignApk(unsignedBase, alignedBase)
 
-        addLog(Log.INFO, "Signing base APK")
+        addLog(Log.INFO, context.getString(R.string.patcher_signing_base))
         val signedBase = File(outputDir, "base.apk")
         APKData.signApks(alignedBase, signedBase, context)
 
         val splitFiles = splitsDir.listFiles() ?: emptyArray()
-        addLog(Log.INFO, "Processing ${splitFiles.size} split APK(s)")
+        addLog(Log.INFO, context.getString(R.string.patcher_processing_split_count, splitFiles.size))
 
         val baseManifest = File(extractDir, "AndroidManifest.xml")
-        val targetVersionCode = if (baseManifest.exists()) {
-            ManifestParser.findVersionCode(baseManifest)
-        } else null
-
-        val isDebuggable = if (baseManifest.exists()) {
-            ManifestParser.isDebuggable(baseManifest)
-        } else null
+        val targetVersionCode = if (baseManifest.exists()) ManifestParser.findVersionCode(baseManifest) else null
+        val isDebuggable = if (baseManifest.exists()) ManifestParser.isDebuggable(baseManifest) else null
 
         val signedSplitFiles = mutableListOf<File>()
         splitFiles.forEach { splitApk ->
-            addLog(Log.INFO, "Processing: ${splitApk.name}")
+            addLog(Log.INFO, context.getString(R.string.patcher_processing_split, splitApk.name))
 
-            // Patch split APK manifest if needed
             val patchedSplit = if (targetVersionCode != null || isDebuggable != null) {
-                patchSplitApkManifest(
-                    context = context,
-                    splitApk = splitApk,
-                    workDir = workDir,
-                    versionCode = targetVersionCode,
-                    debuggable = isDebuggable
-                )
+                patchSplitApkManifest(context, splitApk, workDir, targetVersionCode, isDebuggable)
             } else {
                 splitApk
             }
 
-            // Align
             val alignedSplit = File(outputDir, "temp_aligned_${patchedSplit.name}")
             alignApk(patchedSplit, alignedSplit)
 
-            // Sign
             val signedSplit = File(outputDir, splitApk.name)
             APKData.signApks(alignedSplit, signedSplit, context)
             alignedSplit.delete()
 
-            // Clean up repacked file if it was created
-            if (patchedSplit != splitApk) {
-                patchedSplit.delete()
-            }
+            if (patchedSplit != splitApk) patchedSplit.delete()
 
             signedSplitFiles.add(signedSplit)
-            addLog(Log.INFO, "Signed: ${splitApk.name}")
+            addLog(Log.INFO, context.getString(R.string.patcher_signed_split, splitApk.name))
         }
 
-        addLog(Log.INFO, "Creating split APKs bundle")
+        addLog(Log.INFO, context.getString(R.string.patcher_creating_bundle))
         val finalBundle = File(outputDir, "modded_signed.apks")
         ZipFile(finalBundle).use { zip ->
             zip.addFile(signedBase)
-            signedSplitFiles.forEach { signedSplit ->
-                zip.addFile(signedSplit)
-            }
+            signedSplitFiles.forEach { zip.addFile(it) }
         }
 
         buildDir.deleteRecursively()
-        addLog(Log.INFO, "Split APKs bundle complete: ${finalBundle.name}")
-        addLog(Log.INFO, "Total APKs: ${splitFiles.size + 1}")
+        addLog(Log.INFO, context.getString(R.string.patcher_bundle_complete, finalBundle.name))
+        addLog(Log.INFO, context.getString(R.string.patcher_total_apks, splitFiles.size + 1))
 
         return finalBundle
     }
@@ -437,36 +397,25 @@ object Patcher {
         }
     }
 
-    /**
-     * Inject prebuilt loader dex (exposed for ViewModel)
-     */
     fun injectLoaderDex(context: Context, extractDir: File) {
         val dexFiles = extractDir.listFiles { file ->
             file.isFile && file.name.startsWith("classes") && file.name.endsWith(".dex")
         }.orEmpty()
 
         var maxIndex = 0
-
         for (dex in dexFiles) {
             val name = dex.name
             val index = when {
                 name == "classes.dex" -> 1
                 name.matches(Regex("""classes\d+\.dex""")) ->
-                    name.removePrefix("classes")
-                        .removeSuffix(".dex")
-                        .toIntOrNull() ?: 0
+                    name.removePrefix("classes").removeSuffix(".dex").toIntOrNull() ?: 0
                 else -> 0
             }
             if (index > maxIndex) maxIndex = index
         }
 
         val nextIndex = maxIndex + 1
-        val targetName = if (nextIndex == 1) {
-            "classes.dex"
-        } else {
-            "classes$nextIndex.dex"
-        }
-
+        val targetName = if (nextIndex == 1) "classes.dex" else "classes$nextIndex.dex"
         val target = File(extractDir, targetName)
 
         context.assets.open("loader/hxo.dex").use { input ->
@@ -475,12 +424,9 @@ object Patcher {
             }
         }
 
-        addLog(Log.INFO, "Injected loader dex: $targetName")
+        addLog(Log.INFO, context.getString(R.string.patcher_injected_loader_dex, targetName))
     }
 
-    /**
-     * Add native libraries (exposed for ViewModel)
-     */
     fun injectNativeLibs(context: Context, extractDir: File) {
         try {
             val targetLibDir = File(extractDir, "lib").apply { mkdirs() }
@@ -504,13 +450,15 @@ object Patcher {
                 } catch (_: Exception) {}
             }
 
-            addLog(
-                if (copied > 0) Log.INFO else Log.WARN,
-                "Copied $copied native libraries"
-            )
+            val msg = if (copied > 0) {
+                context.getString(R.string.patcher_copied_native_libs, copied)
+            } else {
+                context.getString(R.string.patcher_no_native_libs)
+            }
+            addLog(if (copied > 0) Log.INFO else Log.WARN, msg)
 
         } catch (e: Exception) {
-            addLog(Log.WARN, "Failed to copy native libs: ${e.message}")
+            addLog(Log.WARN, context.getString(R.string.patcher_failed_copy_native_libs, e.message ?: "Unknown"))
         }
     }
 

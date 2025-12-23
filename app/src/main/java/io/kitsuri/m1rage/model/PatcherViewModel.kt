@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.kitsuri.m1rage.R
 import io.kitsuri.m1rage.patcher.Patcher
 import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.utils.ManifestEditor
@@ -38,8 +39,8 @@ enum class PatchMode {
 data class AppInfo(
     val name: String,
     val packageName: String,
-    val apkUri: Uri?,
-    val apkPath: String?,
+    val apkUri: Uri? = null,
+    val apkPath: String? = null,
     val isSplitApk: Boolean = false,
     val splitCount: Int = 0
 )
@@ -52,6 +53,7 @@ data class PatchConfig(
 )
 
 class PatcherViewModel : ViewModel() {
+
     var patcherState by mutableStateOf(PatcherState.EMPTY)
         private set
 
@@ -95,6 +97,9 @@ class PatcherViewModel : ViewModel() {
         Log.println(level, "PatcherViewModel", message)
     }
 
+    private fun getString(context: Context, resId: Int): String = context.getString(resId)
+    private fun getString(context: Context, resId: Int, vararg args: Any): String = context.getString(resId, *args)
+
     private fun getFileName(context: Context, uri: Uri): String? {
         return context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -116,101 +121,79 @@ class PatcherViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             reset()
-
             patcherState = PatcherState.DECOMPILING
             logs.clear()
             decompileProgress = 0f
-
             Patcher.setViewModel(this@PatcherViewModel)
 
             withContext(Dispatchers.IO) {
                 try {
-                    addLog(Log.INFO, "Processing split APKs from installed app")
-                    addLog(Log.INFO, "Package: $packageName")
-                    addLog(Log.INFO, "Found ${splitApkPaths.size} APK file(s)")
+                    addLog(Log.INFO, getString(context, R.string.vm_processing_split_installed))
+                    addLog(Log.INFO, getString(context, R.string.vm_package_info, packageName))
+                    addLog(Log.INFO, getString(context, R.string.vm_found_apks, splitApkPaths.size))
                     decompileProgress = 0.1f
+
                     val timestamp = System.currentTimeMillis()
                     val uniqueId = java.util.UUID.randomUUID().toString().take(8)
                     val workDir = File(context.getExternalFilesDir(null), "apk_workspace/${timestamp}_${uniqueId}")
                     workDir.mkdirs()
 
-
-                    // Create splits directory to store non-base APKs
                     val splitsDir = File(workDir, "splits").apply { mkdirs() }
+                    addLog(Log.INFO, getString(context, R.string.vm_copying_splits))
 
-                    addLog(Log.INFO, "Copying split APKs...")
-
-                    // First APK is always base, rest are splits
                     val baseApkPath = splitApkPaths[0]
-                    val baseApk = File(baseApkPath)
-
-                    // Extract base APK for patching
                     val extractDir = File(workDir, "extracted_base").apply { mkdirs() }
-                    addLog(Log.INFO, "Extracting base APK...")
-                    net.lingala.zip4j.ZipFile(baseApk).extractAll(extractDir.absolutePath)
+                    addLog(Log.INFO, getString(context, R.string.vm_extracting_base))
+                    ZipFile(File(baseApkPath)).extractAll(extractDir.absolutePath)
                     decompileProgress = 0.3f
 
-                    // Copy split APKs to splits directory (skip base at index 0)
-                    splitApkPaths.drop(1).forEachIndexed { index, path ->
+                    splitApkPaths.drop(1).forEach { path ->
                         val splitFile = File(path)
                         if (splitFile.exists()) {
-                            val targetFile = File(splitsDir, splitFile.name)
-                            splitFile.copyTo(targetFile, overwrite = true)
-                            addLog(Log.DEBUG, "Copied split: ${splitFile.name}")
+                            val target = File(splitsDir, splitFile.name)
+                            splitFile.copyTo(target, overwrite = true)
+                            addLog(Log.DEBUG, getString(context, R.string.vm_copied_split, splitFile.name))
                         }
                     }
                     decompileProgress = 0.4f
 
-                    // Verify manifest exists
                     val manifestFile = File(extractDir, "AndroidManifest.xml")
                     if (!manifestFile.exists()) {
-                        throw Exception("AndroidManifest.xml not found in base APK")
+                        throw Exception(getString(context, R.string.vm_manifest_not_found_error))
                     }
 
-                    // Parse activities
-                    addLog(Log.INFO, "Parsing AndroidManifest.xml...")
+                    addLog(Log.INFO, getString(context, R.string.vm_parsing_manifest))
                     val launcherActivity = ManifestParser.findLauncherActivity(manifestFile)
                     val activities = listOfNotNull(launcherActivity)
                     decompileProgress = 0.5f
 
-                    // Apply patches to base APK
-                    addLog(Log.INFO, "Injecting loader DEX...")
+                    addLog(Log.INFO, getString(context, R.string.vm_injecting_loader_dex))
                     Patcher.injectLoaderDex(context, extractDir)
                     decompileProgress = 0.7f
 
-                    addLog(Log.INFO, "Injecting provider...")
+                    addLog(Log.INFO, getString(context, R.string.vm_injecting_provider))
                     ManifestEditor.addProvider(context, manifestFile, packageName)
                     decompileProgress = 0.8f
 
-                    addLog(Log.INFO, "Adding native libraries...")
+                    addLog(Log.INFO, getString(context, R.string.vm_adding_native_libs))
                     Patcher.injectNativeLibs(context, extractDir)
                     decompileProgress = 0.9f
 
-                    addLog(Log.INFO, "Found ${activities.size} activities")
-                    addLog(Log.INFO, "Decompilation completed successfully")
+                    addLog(Log.INFO, getString(context, R.string.vm_found_activities, activities.size))
+                    addLog(Log.INFO, getString(context, R.string.vm_decompile_success))
                     decompileProgress = 1f
 
                     withContext(Dispatchers.Main) {
-                        selectedApp = AppInfo(
-                            appName,
-                            packageName,
-                            null,
-                            null,
-                            isSplitApk = true,
-                            splitCount = splitApkPaths.size
-                        )
+                        selectedApp = AppInfo(appName, packageName, isSplitApk = true, splitCount = splitApkPaths.size)
                         extractedDir = extractDir
                         availableActivities = activities
                         patchConfig = patchConfig.copy(selectedActivity = activities.firstOrNull())
                         patcherState = PatcherState.CONFIGURATION
                     }
-
                 } catch (e: Exception) {
-                    addLog(Log.ERROR, "Error: ${e.message}")
+                    addLog(Log.ERROR, getString(context, R.string.vm_error_generic, e.message ?: "Unknown error"))
                     e.printStackTrace()
-                    withContext(Dispatchers.Main) {
-                        patcherState = PatcherState.ERROR
-                    }
+                    withContext(Dispatchers.Main) { patcherState = PatcherState.ERROR }
                 }
             }
         }
@@ -219,16 +202,14 @@ class PatcherViewModel : ViewModel() {
     private fun startDecompiling(context: Context, apkUri: Uri?, apkPath: String?) {
         viewModelScope.launch {
             reset()
-
             patcherState = PatcherState.DECOMPILING
             logs.clear()
             decompileProgress = 0f
-
             Patcher.setViewModel(this@PatcherViewModel)
 
             withContext(Dispatchers.IO) {
                 try {
-                    addLog(Log.INFO, "Starting decompilation process...")
+                    addLog(Log.INFO, getString(context, R.string.vm_starting_decompile))
                     decompileProgress = 0.1f
 
                     val pm = context.packageManager
@@ -240,38 +221,28 @@ class PatcherViewModel : ViewModel() {
 
                     if (apkUri != null) {
                         isSplit = isSplitApksBundle(context, apkUri)
-
                         if (isSplit) {
-                            addLog(Log.INFO, "Detected split APKs bundle (.apks/.xapk)")
+                            addLog(Log.INFO, getString(context, R.string.vm_detected_split_bundle))
                         } else {
-                            addLog(Log.INFO, "Reading APK from storage...")
+                            addLog(Log.INFO, getString(context, R.string.vm_reading_apk_storage))
                         }
 
                         val tempApkPath = "${context.cacheDir}/temp_${System.currentTimeMillis()}.${if (isSplit) "apks" else "apk"}"
                         context.contentResolver.openInputStream(apkUri)?.use { input ->
-                            File(tempApkPath).outputStream().use { output ->
-                                input.copyTo(output)
-                            }
+                            File(tempApkPath).outputStream().use { output -> input.copyTo(output) }
                         }
                         decompileProgress = 0.2f
 
                         if (isSplit) {
                             val bundleFile = File(tempApkPath)
-                            val bundleExtractDir = File(context.cacheDir, "temp_bundle_${System.currentTimeMillis()}")
-                            bundleExtractDir.mkdirs()
-
+                            val bundleExtractDir = File(context.cacheDir, "temp_bundle_${System.currentTimeMillis()}").apply { mkdirs() }
                             ZipFile(bundleFile).extractAll(bundleExtractDir.absolutePath)
 
-                            val apkFiles = bundleExtractDir.walkTopDown()
-                                .filter { it.isFile && it.extension == "apk" }
-                                .toList()
+                            val apkFiles = bundleExtractDir.walkTopDown().filter { it.extension == "apk" }.toList()
                             splitCount = apkFiles.size
-                            addLog(Log.INFO, "Found $splitCount APK file(s) in bundle")
+                            addLog(Log.INFO, getString(context, R.string.vm_found_in_bundle, splitCount))
 
-                            val baseApk = apkFiles.firstOrNull {
-                                it.nameWithoutExtension.contains("base", ignoreCase = true)
-                            } ?: apkFiles.first()
-
+                            val baseApk = apkFiles.firstOrNull { it.nameWithoutExtension.contains("base", ignoreCase = true) } ?: apkFiles.first()
                             val info = pm.getPackageArchiveInfo(baseApk.absolutePath, 0)
                             appName = info?.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown"
                             packageName = info?.packageName ?: "unknown"
@@ -284,61 +255,53 @@ class PatcherViewModel : ViewModel() {
                         }
 
                         actualApkPath = tempApkPath
-                        addLog(Log.INFO, "Package: $packageName")
+                        addLog(Log.INFO, getString(context, R.string.vm_package_info, packageName))
                     } else {
-                        addLog(Log.INFO, "Reading APK from installed app...")
+                        addLog(Log.INFO, getString(context, R.string.vm_reading_installed_app))
                         val info = pm.getPackageArchiveInfo(apkPath!!, 0)
                         appName = info?.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown"
                         packageName = info?.packageName ?: "unknown"
                         actualApkPath = apkPath
-                        addLog(Log.INFO, "Package: $packageName")
+                        addLog(Log.INFO, getString(context, R.string.vm_package_info, packageName))
                         decompileProgress = 0.2f
                     }
 
                     if (isSplit) {
-                        addLog(Log.INFO, "Extracting split APKs bundle...")
+                        addLog(Log.INFO, getString(context, R.string.vm_extracting_split_bundle))
                     } else {
-                        addLog(Log.INFO, "Extracting APK contents...")
+                        addLog(Log.INFO, getString(context, R.string.vm_extracting_apk_contents))
                     }
                     decompileProgress = 0.3f
 
-                    addLog(Log.INFO, "Decompiling DEX files...")
+                    addLog(Log.INFO, getString(context, R.string.vm_decompiling_dex))
                     decompileProgress = 0.5f
 
                     val extractDir = Patcher.patchApk(context, Uri.parse("file://$actualApkPath"))
                     decompileProgress = 0.8f
 
                     if (extractDir != null) {
-                        addLog(Log.INFO, "Parsing AndroidManifest.xml...")
+                        addLog(Log.INFO, getString(context, R.string.vm_parsing_manifest))
                         val manifestFile = File(extractDir, "AndroidManifest.xml")
                         val launcherActivity = ManifestParser.findLauncherActivity(manifestFile)
-
                         val activities = listOfNotNull(launcherActivity)
                         decompileProgress = 0.9f
 
-                        addLog(Log.INFO, "Found ${activities.size} activities")
-                        addLog(Log.INFO, "Decompilation completed successfully")
+                        addLog(Log.INFO, getString(context, R.string.vm_found_activities, activities.size))
+                        addLog(Log.INFO, getString(context, R.string.vm_decompile_success))
                         decompileProgress = 1f
 
                         withContext(Dispatchers.Main) {
-                            selectedApp = AppInfo(
-                                appName,
-                                packageName,
-                                apkUri,
-                                apkPath,
-                                isSplit,
-                                splitCount
-                            )
+                            selectedApp = AppInfo(appName, packageName, apkUri, apkPath, isSplit, splitCount)
                             extractedDir = extractDir
                             availableActivities = activities
                             patchConfig = patchConfig.copy(selectedActivity = activities.firstOrNull())
                             patcherState = PatcherState.CONFIGURATION
                         }
                     } else {
-                        throw Exception("Failed to extract APK")
+                        throw Exception(getString(context, R.string.vm_failed_extract))
                     }
                 } catch (e: Exception) {
-                    addLog(Log.ERROR, "Error: ${e.message}")
+                    addLog(Log.ERROR, getString(context, R.string.vm_error_generic, e.message ?: "Unknown error"))
                     e.printStackTrace()
                     withContext(Dispatchers.Main) {
                         patcherState = PatcherState.ERROR
@@ -354,80 +317,68 @@ class PatcherViewModel : ViewModel() {
         viewModelScope.launch {
             patcherState = PatcherState.PATCHING
             logs.clear()
-
             Patcher.setViewModel(this@PatcherViewModel)
 
             withContext(Dispatchers.IO) {
                 try {
-                    addLog(Log.INFO, "Starting patch process")
+                    addLog(Log.INFO, getString(context, R.string.vm_starting_patch))
 
-                    if (selectedApp?.isSplitApk == true) {
-                        addLog(Log.INFO, "Processing split APKs (${selectedApp?.splitCount} files)")
+                    selectedApp?.let {
+                        if (it.isSplitApk) {
+                            addLog(Log.INFO, getString(context, R.string.vm_processing_split_count, it.splitCount))
+                        }
                     }
 
-                    addLog(
-                        Log.INFO,
-                        "Mode: ${
-                            if (patchConfig.mode == PatchMode.DEX)
-                                "DEX Injection"
-                            else
-                                "Patch ELF"
-                        }"
-                    )
+                    val modeText = if (patchConfig.mode == PatchMode.DEX)
+                        getString(context, R.string.vm_mode_dex)
+                    else
+                        getString(context, R.string.vm_mode_mapi)
+                    addLog(Log.INFO, getString(context, R.string.vm_mode_label, modeText))
 
                     patchConfig.selectedActivity?.let {
-                        addLog(Log.INFO, "Target activity: $it")
+                        addLog(Log.INFO, getString(context, R.string.vm_target_activity, it))
                     }
 
                     val manifestFile = File(extractedDir!!, "AndroidManifest.xml")
 
-                    // Apply manifest modifications to BASE APK
                     if (patchConfig.debuggable) {
-                        addLog(Log.INFO, "Applying debuggable flag to base APK")
+                        addLog(Log.INFO, getString(context, R.string.vm_applying_debuggable))
                         ManifestEditor.setDebuggable(context, manifestFile, true)
                     }
 
                     if (patchConfig.overrideVersionCode) {
-                        addLog(Log.INFO, "Overriding version code to 1 in base APK")
+                        addLog(Log.INFO, getString(context, R.string.vm_overriding_version_code))
                         ManifestEditor.setVersionCode(context, manifestFile, 1)
                     }
 
-                    // Note: Split APKs will be patched automatically during rebuild
                     if (selectedApp?.isSplitApk == true) {
-                        addLog(Log.INFO, "Split APKs will be patched with matching version code and debuggable flag")
+                        addLog(Log.INFO, getString(context, R.string.vm_split_will_be_patched))
                     }
 
-                    addLog(Log.INFO, "Preparing patched APK")
+                    addLog(Log.INFO, getString(context, R.string.vm_preparing_patched))
 
                     val signedApk = Patcher.rebuildApk(context, extractedDir!!)
                         ?: throw Exception("Failed to rebuild APK")
 
-                    addLog(Log.INFO, "APK rebuilt successfully")
-                    addLog(Log.INFO, "Output: ${signedApk.absolutePath}")
-                    addLog(
-                        Log.INFO,
-                        "Size: ${signedApk.length() / 1024 / 1024} MB"
-                    )
+                    addLog(Log.INFO, getString(context, R.string.vm_rebuild_success))
+                    addLog(Log.INFO, getString(context, R.string.vm_output_path, signedApk.absolutePath))
+                    addLog(Log.INFO, getString(context, R.string.vm_output_size, (signedApk.length() / 1024 / 1024).toInt()))
 
                     if (selectedApp?.isSplitApk == true) {
-                        addLog(Log.INFO, "Split APKs bundle ready for installation")
-                        addLog(Log.INFO, "All APKs have matching version codes and signatures")
-                        addLog(Log.INFO, "Use 'adb install-multiple' or SAI app to install")
+                        addLog(Log.INFO, getString(context, R.string.vm_split_bundle_ready))
+                        addLog(Log.INFO, getString(context, R.string.vm_matching_signatures))
+                        addLog(Log.INFO, getString(context, R.string.vm_install_instructions))
                     }
 
                     withContext(Dispatchers.Main) {
                         outputApkFile = signedApk
                         patcherState = PatcherState.FINISHED
-                        extractedDir?.parentFile?.let { workspaceDir ->
-                            CleanupManager.deleteWorkspace(workspaceDir)
-                        }
+                        extractedDir?.parentFile?.let { CleanupManager.deleteWorkspace(it) }
                         extractedDir = null
                     }
-
                 } catch (e: Exception) {
-                    addLog(Log.ERROR, "Patch failed: ${e.message}")
+                    addLog(Log.ERROR, getString(context, R.string.vm_patch_failed, e.message ?: "Unknown error"))
                     e.printStackTrace()
-
                     withContext(Dispatchers.Main) {
                         patcherState = PatcherState.ERROR
                         extractedDir?.parentFile?.let { CleanupManager.deleteWorkspace(it) }
@@ -441,11 +392,7 @@ class PatcherViewModel : ViewModel() {
     private fun reset() {
         patcherState = PatcherState.EMPTY
         selectedApp = null
-
-        extractedDir?.parentFile?.let { workspaceDir ->
-            CleanupManager.deleteWorkspace(workspaceDir)
-        }
-
+        extractedDir?.parentFile?.let { CleanupManager.deleteWorkspace(it) }
         extractedDir = null
         outputApkFile = null
         savedToDownloads = false
@@ -459,140 +406,50 @@ class PatcherViewModel : ViewModel() {
             withContext(Dispatchers.IO) {
                 try {
                     val sourceFile = outputApkFile ?: return@withContext
-
-                    val appName =
-                        selectedApp?.name
-                            ?.replace(" ", "_")
-                            ?: "patched"
-
-                    val fileName =
-                        "${appName}_modded.${sourceFile.extension}"
+                    val appName = selectedApp?.name?.replace(" ", "_") ?: "patched"
+                    val fileName = "${appName}_modded.${sourceFile.extension}"
 
                     val settings = SettingsManager(context)
                     val resolver = context.contentResolver
-                    val uriString =
-                        settings.getStringValue("save_directory_uri", "")
-
+                    val uriString = settings.getStringValue("save_directory_uri", "")
 
                     if (uriString.isNotEmpty()) {
                         try {
                             val treeUri = Uri.parse(uriString)
-
-                            val hasPermission =
-                                resolver.persistedUriPermissions.any {
-                                    it.uri == treeUri && it.isWritePermission
-                                }
-
-                            if (hasPermission) {
-                                copyToUri(
-                                    context = context,
-                                    source = sourceFile,
-                                    treeUri = treeUri,
-                                    fileName = fileName
-                                )
-
+                            if (resolver.persistedUriPermissions.any { it.uri == treeUri && it.isWritePermission }) {
+                                copyToUri(context, sourceFile, treeUri, fileName)
                                 withContext(Dispatchers.Main) {
-                                    addLog(
-                                        Log.INFO,
-                                        "Saved to selected folder: $fileName"
-                                    )
+                                    addLog(Log.INFO, getString(context, R.string.vm_saved_to_folder, fileName))
                                     savedToDownloads = true
                                 }
                                 return@withContext
                             }
-                        } catch (_: Exception) {
-                            // fall through to default
-                        }
+                        } catch (_: Exception) {}
                     }
 
-                    val fallbackDir = File(
-                        Environment.getExternalStoragePublicDirectory(
-                            Environment.DIRECTORY_DOWNLOADS
-                        ),
-                        "Mirage"
-                    ).apply { mkdirs() }
-
-                    sourceFile.copyTo(
-                        File(fallbackDir, fileName),
-                        overwrite = true
-                    )
+                    val fallbackDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Mirage").apply { mkdirs() }
+                    sourceFile.copyTo(File(fallbackDir, fileName), overwrite = true)
 
                     withContext(Dispatchers.Main) {
-                        addLog(
-                            Log.INFO,
-                            "Saved to Downloads/Mirage: $fileName"
-                        )
+                        addLog(Log.INFO, getString(context, R.string.vm_saved_to_downloads, fileName))
                         savedToDownloads = true
                     }
-
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        addLog(
-                            Log.ERROR,
-                            "Failed to save: ${e.message}"
-                        )
+                        addLog(Log.ERROR, getString(context, R.string.vm_save_failed, e.message ?: "Unknown error"))
                     }
                 }
             }
         }
     }
 
-
-    fun copyToUri(
-        context: Context,
-        source: File,
-        treeUri: Uri,
-        fileName: String
-    ) {
+    fun copyToUri(context: Context, source: File, treeUri: Uri, fileName: String) {
         val docTree = DocumentFile.fromTreeUri(context, treeUri) ?: return
-
-        val outFile =
-            docTree.findFile(fileName)
-                ?: docTree.createFile(
-                    "application/vnd.android.package-archive",
-                    fileName
-                )
-                ?: return
-
+        val outFile = docTree.findFile(fileName) ?: docTree.createFile("application/vnd.android.package-archive", fileName) ?: return
         context.contentResolver.openOutputStream(outFile.uri)?.use { out ->
-            source.inputStream().use { input ->
-                input.copyTo(out)
-            }
+            source.inputStream().use { input -> input.copyTo(out) }
         }
     }
-
-
-
-    fun getSaveLocation(context: Context, settings: SettingsManager): File {
-        val defaultDir = File(
-            Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS
-            ),
-            "Mirage"
-        )
-
-        if (!defaultDir.exists()) defaultDir.mkdirs()
-        return defaultDir
-    }
-
-
-    fun resolveSaveDirectory(context: Context, settings: SettingsManager): File {
-        val relativePath = settings.getStringValue(
-            "save_directory",
-            "Downloads/Mirage"
-        ).trim().removePrefix("/")
-
-        val baseDir = Environment.getExternalStorageDirectory()
-        val targetDir = File(baseDir, relativePath)
-
-        if (!targetDir.exists()) {
-            targetDir.mkdirs()
-        }
-
-        return targetDir
-    }
-
-
 
     sealed class ViewAction {
         data class StartDecompile(val context: Context, val apkUri: Uri?, val apkPath: String?) : ViewAction()
