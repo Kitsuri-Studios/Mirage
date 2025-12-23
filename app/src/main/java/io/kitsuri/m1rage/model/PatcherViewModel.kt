@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.kitsuri.m1rage.patcher.Patcher
+import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.utils.ManifestEditor
 import io.kitsuri.m1rage.utils.ManifestParser
 import kotlinx.coroutines.Dispatchers
@@ -336,6 +337,8 @@ class PatcherViewModel : ViewModel() {
                     e.printStackTrace()
                     withContext(Dispatchers.Main) {
                         patcherState = PatcherState.ERROR
+                        extractedDir?.parentFile?.let { CleanupManager.deleteWorkspace(it) }
+                        extractedDir = null
                     }
                 }
             }
@@ -348,6 +351,8 @@ class PatcherViewModel : ViewModel() {
             logs.clear()
 
             Patcher.setViewModel(this@PatcherViewModel)
+
+
 
             withContext(Dispatchers.IO) {
                 try {
@@ -403,6 +408,10 @@ class PatcherViewModel : ViewModel() {
                     withContext(Dispatchers.Main) {
                         outputApkFile = signedApk
                         patcherState = PatcherState.FINISHED
+                        extractedDir?.parentFile?.let { workspaceDir ->
+                            CleanupManager.deleteWorkspace(workspaceDir)
+                        }
+                        extractedDir = null
                     }
 
                 } catch (e: Exception) {
@@ -411,6 +420,8 @@ class PatcherViewModel : ViewModel() {
 
                     withContext(Dispatchers.Main) {
                         patcherState = PatcherState.ERROR
+                        extractedDir?.parentFile?.let { CleanupManager.deleteWorkspace(it) }
+                        extractedDir = null
                     }
                 }
             }
@@ -420,6 +431,11 @@ class PatcherViewModel : ViewModel() {
     private fun reset() {
         patcherState = PatcherState.EMPTY
         selectedApp = null
+
+        extractedDir?.parentFile?.let { workspaceDir ->
+            CleanupManager.deleteWorkspace(workspaceDir)
+        }
+
         extractedDir = null
         outputApkFile = null
         savedToDownloads = false
