@@ -277,5 +277,30 @@ object ManifestParser {
             null
         }
     }
+    fun findVersionCode(manifestFile: File): Int? {
+        return try {
+            val xml = aXMLDecoder(manifestFile.inputStream()).decodeAsString()
+                ?: return null
+
+            val versionCodeRegex = Regex("""android:versionCode\s*=\s*["'](\d+)["']""")
+            val match = versionCodeRegex.find(xml)
+            match?.groupValues?.get(1)?.toIntOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun isDebuggable(manifestFile: File): Boolean? {
+        return try {
+            val xml = aXMLDecoder(manifestFile.inputStream()).decodeAsString()
+                ?: return null
+
+            val debuggableRegex = Regex("""android:debuggable\s*=\s*["'](true|false)["']""")
+            val match = debuggableRegex.find(xml)
+            match?.groupValues?.get(1)?.toBoolean()
+        } catch (e: Exception) {
+            null
+        }
+    }
 
 }

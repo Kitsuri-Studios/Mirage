@@ -1,12 +1,19 @@
 
 package io.kitsuri.m1rage.activities
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
+import androidx.documentfile.provider.DocumentFile
 import io.kitsuri.m1rage.globals.AppContext
 import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.ui.components.MainScaffold
@@ -27,6 +34,31 @@ class MainActivity : ComponentActivity() {
         registerSetting()
 
         setContent {
+            SaveDirectoryPicker.launcher =
+                rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocumentTree()
+                ) { uri ->
+                    if (uri != null) {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+
+                        AppContext.settingsManager.setStringValue(
+                            "save_directory_uri",
+                            uri.toString()
+                        )
+
+                        updateSavePathInfo(this@MainActivity)
+                    }
+                }
+
+            LaunchedEffect(Unit) {
+                updateSavePathInfo(this@MainActivity)
+            }
+
+
             M1rageTheme {
                 var showRepairScreen by remember { mutableStateOf(false) }
                 var repairProgress by remember { mutableStateOf(0f) }
@@ -103,5 +135,73 @@ class MainActivity : ComponentActivity() {
             description = "Enable or disable Test",
             customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_toggle_right
         )
+
+
+        settingsManager.addInfo(
+            key = "current_save_path",
+            title = "Save location: Downloads/Mirage"
+        )
+
+
+        settingsManager.addButton(
+            key = "pick_save_directory",
+            title = "Select save folder",
+            onClick = {
+                SaveDirectoryPicker.open()
+            }
+        )
     }
+
+
+    object SaveDirectoryPicker {
+        lateinit var launcher: ManagedActivityResultLauncher<Uri?, Uri?>
+
+        fun open() {
+            launcher.launch(null)
+        }
+    }
+
+    private fun updateSavePathInfo(context: Context) {
+        val settingsManager = AppContext.settingsManager
+        val uriString = settingsManager.getStringValue("save_directory_uri", "")
+
+        val displayText = if (uriString.isNotEmpty()) {
+            try {
+                val name =
+                    DocumentFile
+                        .fromTreeUri(context, Uri.parse(uriString))
+                        ?.name
+
+                "Save location: ${name ?: "Custom folder"}"
+            } catch (_: Exception) {
+                "Save location: Downloads/Mirage"
+            }
+        } else {
+            "Save location: Downloads/Mirage"
+        }
+
+        settingsManager.removeSetting("current_save_path")
+        settingsManager.removeSetting("pick_save_directory")
+        settingsManager.addInfo(
+            key = "current_save_path",
+            title = displayText,
+            customIconResId = ir.alirezaivaz.tablericons.R.drawable.ic_folder
+        )
+        settingsManager.addButton(
+            key = "pick_save_directory",
+            title = "Select save folder",
+            onClick = {
+                SaveDirectoryPicker.open()
+            }
+        )
+
+
+
+
+
+    }
+
+
+
+
 }

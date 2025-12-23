@@ -2,13 +2,16 @@ package io.kitsuri.m1rage.model
 
 import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.kitsuri.m1rage.globals.AppContext
 import io.kitsuri.m1rage.patcher.Patcher
 import io.kitsuri.m1rage.utils.CleanupManager
 import io.kitsuri.m1rage.utils.ManifestEditor
@@ -18,7 +21,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.lingala.zip4j.ZipFile
 import java.io.File
-import java.io.FileOutputStream
 
 enum class PatcherState {
     EMPTY,
@@ -84,7 +86,7 @@ class PatcherViewModel : ViewModel() {
             )
             is ViewAction.ConfigureComplete -> patcherState = PatcherState.CONFIGURATION
             is ViewAction.StartPatch -> startPatching(action.context)
-            is ViewAction.SaveToDownloads -> saveToDownloads(action.context)
+            is ViewAction.SaveToDownloads -> savePatchedApk(action.context)
             ViewAction.Reset -> reset()
         }
     }
@@ -114,6 +116,8 @@ class PatcherViewModel : ViewModel() {
         splitApkPaths: List<String>
     ) {
         viewModelScope.launch {
+            reset()
+
             patcherState = PatcherState.DECOMPILING
             logs.clear()
             decompileProgress = 0f
@@ -126,11 +130,11 @@ class PatcherViewModel : ViewModel() {
                     addLog(Log.INFO, "Package: $packageName")
                     addLog(Log.INFO, "Found ${splitApkPaths.size} APK file(s)")
                     decompileProgress = 0.1f
-
-                    // Create workspace
                     val timestamp = System.currentTimeMillis()
-                    val workDir = File(context.getExternalFilesDir(null), "apk_workspace/$timestamp")
+                    val uniqueId = java.util.UUID.randomUUID().toString().take(8)
+                    val workDir = File(context.getExternalFilesDir(null), "apk_workspace/${timestamp}_${uniqueId}")
                     workDir.mkdirs()
+
 
                     // Create splits directory to store non-base APKs
                     val splitsDir = File(workDir, "splits").apply { mkdirs() }
@@ -215,6 +219,8 @@ class PatcherViewModel : ViewModel() {
 
     private fun startDecompiling(context: Context, apkUri: Uri?, apkPath: String?) {
         viewModelScope.launch {
+            reset()
+
             patcherState = PatcherState.DECOMPILING
             logs.clear()
             decompileProgress = 0f
@@ -352,8 +358,6 @@ class PatcherViewModel : ViewModel() {
 
             Patcher.setViewModel(this@PatcherViewModel)
 
-
-
             withContext(Dispatchers.IO) {
                 try {
                     addLog(Log.INFO, "Starting patch process")
@@ -378,14 +382,20 @@ class PatcherViewModel : ViewModel() {
 
                     val manifestFile = File(extractedDir!!, "AndroidManifest.xml")
 
+                    // Apply manifest modifications to BASE APK
                     if (patchConfig.debuggable) {
-                        addLog(Log.INFO, "Applying debuggable flag")
+                        addLog(Log.INFO, "Applying debuggable flag to base APK")
                         ManifestEditor.setDebuggable(context, manifestFile, true)
                     }
 
                     if (patchConfig.overrideVersionCode) {
-                        addLog(Log.INFO, "Overriding version code to 1")
+                        addLog(Log.INFO, "Overriding version code to 1 in base APK")
                         ManifestEditor.setVersionCode(context, manifestFile, 1)
+                    }
+
+                    // Note: Split APKs will be patched automatically during rebuild
+                    if (selectedApp?.isSplitApk == true) {
+                        addLog(Log.INFO, "Split APKs will be patched with matching version code and debuggable flag")
                     }
 
                     addLog(Log.INFO, "Preparing patched APK")
@@ -402,6 +412,7 @@ class PatcherViewModel : ViewModel() {
 
                     if (selectedApp?.isSplitApk == true) {
                         addLog(Log.INFO, "Split APKs bundle ready for installation")
+                        addLog(Log.INFO, "All APKs have matching version codes and signatures")
                         addLog(Log.INFO, "Use 'adb install-multiple' or SAI app to install")
                     }
 
@@ -444,33 +455,145 @@ class PatcherViewModel : ViewModel() {
         decompileProgress = 0f
     }
 
-    private fun saveToDownloads(context: Context) {
+    private fun savePatchedApk(context: Context) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 try {
                     val sourceFile = outputApkFile ?: return@withContext
-                    val appName = selectedApp?.name?.replace(" ", "_") ?: "patched"
-                    val fileName = "${appName}_modded.${sourceFile.extension}"
 
-                    val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    val appName =
+                        selectedApp?.name
+                            ?.replace(" ", "_")
+                            ?: "patched"
+
+                    val fileName =
+                        "${appName}_modded.${sourceFile.extension}"
+
+                    val settings = SettingsManager(context)
+                    val resolver = context.contentResolver
+                    val uriString =
+                        settings.getStringValue("save_directory_uri", "")
+
+
+                    if (uriString.isNotEmpty()) {
+                        try {
+                            val treeUri = Uri.parse(uriString)
+
+                            val hasPermission =
+                                resolver.persistedUriPermissions.any {
+                                    it.uri == treeUri && it.isWritePermission
+                                }
+
+                            if (hasPermission) {
+                                copyToUri(
+                                    context = context,
+                                    source = sourceFile,
+                                    treeUri = treeUri,
+                                    fileName = fileName
+                                )
+
+                                withContext(Dispatchers.Main) {
+                                    addLog(
+                                        Log.INFO,
+                                        "Saved to selected folder: $fileName"
+                                    )
+                                    savedToDownloads = true
+                                }
+                                return@withContext
+                            }
+                        } catch (_: Exception) {
+                            // fall through to default
+                        }
+                    }
+
+                    val fallbackDir = File(
+                        Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS
+                        ),
+                        "Mirage"
+                    ).apply { mkdirs() }
+
+                    sourceFile.copyTo(
+                        File(fallbackDir, fileName),
+                        overwrite = true
                     )
-                    val destFile = File(downloadsDir, fileName)
-
-                    sourceFile.copyTo(destFile, overwrite = true)
 
                     withContext(Dispatchers.Main) {
-                        addLog(Log.INFO, "Saved to Downloads: $fileName")
+                        addLog(
+                            Log.INFO,
+                            "Saved to Downloads/Mirage: $fileName"
+                        )
                         savedToDownloads = true
                     }
+
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        addLog(Log.ERROR, "Failed to save: ${e.message}")
+                        addLog(
+                            Log.ERROR,
+                            "Failed to save: ${e.message}"
+                        )
                     }
                 }
             }
         }
     }
+
+
+    fun copyToUri(
+        context: Context,
+        source: File,
+        treeUri: Uri,
+        fileName: String
+    ) {
+        val docTree = DocumentFile.fromTreeUri(context, treeUri) ?: return
+
+        val outFile =
+            docTree.findFile(fileName)
+                ?: docTree.createFile(
+                    "application/vnd.android.package-archive",
+                    fileName
+                )
+                ?: return
+
+        context.contentResolver.openOutputStream(outFile.uri)?.use { out ->
+            source.inputStream().use { input ->
+                input.copyTo(out)
+            }
+        }
+    }
+
+
+
+    fun getSaveLocation(context: Context, settings: SettingsManager): File {
+        val defaultDir = File(
+            Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS
+            ),
+            "Mirage"
+        )
+
+        if (!defaultDir.exists()) defaultDir.mkdirs()
+        return defaultDir
+    }
+
+
+    fun resolveSaveDirectory(context: Context, settings: SettingsManager): File {
+        val relativePath = settings.getStringValue(
+            "save_directory",
+            "Downloads/Mirage"
+        ).trim().removePrefix("/")
+
+        val baseDir = Environment.getExternalStorageDirectory()
+        val targetDir = File(baseDir, relativePath)
+
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+        }
+
+        return targetDir
+    }
+
+
 
     sealed class ViewAction {
         data class StartDecompile(val context: Context, val apkUri: Uri?, val apkPath: String?) : ViewAction()

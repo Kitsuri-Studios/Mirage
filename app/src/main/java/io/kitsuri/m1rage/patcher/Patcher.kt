@@ -47,10 +47,15 @@ object Patcher {
     ): File? = withContext(Dispatchers.IO) {
         try {
             val timestamp = System.currentTimeMillis()
-            val workDir = File(context.getExternalFilesDir(null), "apk_workspace/$timestamp")
+            val uniqueId = java.util.UUID.randomUUID().toString().take(8)
+            val workDir = File(context.getExternalFilesDir(null), "apk_workspace/${timestamp}_${uniqueId}")
+
+            if (workDir.exists()) {
+                workDir.deleteRecursively()
+            }
             workDir.mkdirs()
 
-            addLog(Log.INFO, "Creating workspace")
+            addLog(Log.INFO, "Creating workspace: ${workDir.name}")
 
             // Check if it's a split APKs bundle
             val isSplitBundle = isSplitApksBundle(context, apkUri)
@@ -176,6 +181,54 @@ object Patcher {
         return extractDir
     }
 
+    private fun patchSplitApkManifest(
+        context: Context,
+        splitApk: File,
+        workDir: File,
+        versionCode: Int? = null,
+        debuggable: Boolean? = null
+    ): File {
+        try {
+            // Extract split APK
+            val splitExtractDir = File(workDir, "temp_split_${splitApk.nameWithoutExtension}").apply {
+                deleteRecursively()
+                mkdirs()
+            }
+
+            addLog(Log.DEBUG, "Extracting ${splitApk.name} for manifest patching")
+            APKInstallUtils.unzip(splitApk.absolutePath, splitExtractDir.absolutePath)
+
+            // Modify manifest if it exists
+            val manifestFile = File(splitExtractDir, "AndroidManifest.xml")
+            if (manifestFile.exists()) {
+                if (versionCode != null) {
+                    addLog(Log.DEBUG, "Setting version code to $versionCode in ${splitApk.name}")
+                    ManifestEditor.setVersionCode(context, manifestFile, versionCode)
+                }
+
+                if (debuggable != null) {
+                    addLog(Log.DEBUG, "Setting debuggable=$debuggable in ${splitApk.name}")
+                    ManifestEditor.setDebuggable(context, manifestFile, debuggable)
+                }
+            }
+
+            // Repack the split APK
+            File(splitExtractDir, "META-INF").deleteRecursively()
+
+            val repackedSplit = File(workDir, "repacked_${splitApk.name}")
+            zipDirectory(splitExtractDir, repackedSplit)
+
+            // Cleanup temp extraction
+            splitExtractDir.deleteRecursively()
+
+            return repackedSplit
+
+        } catch (e: Exception) {
+            addLog(Log.WARN, "Failed to patch ${splitApk.name}: ${e.message}, using original")
+            return splitApk
+        }
+    }
+
     suspend fun rebuildApk(context: Context, extractDir: File): File? =
         withContext(Dispatchers.IO) {
             try {
@@ -253,11 +306,16 @@ object Patcher {
         splitsDir: File
     ): File {
         val workDir = extractDir.parentFile!!
+
+        if (!splitsDir.canonicalPath.startsWith(workDir.canonicalPath)) {
+            addLog(Log.ERROR, "Splits directory is from wrong workspace!")
+            throw Exception("Invalid splits directory")
+        }
+
         val buildDir = File(workDir.parentFile, "build_temp").apply {
             deleteRecursively()
             mkdirs()
         }
-
 
         addLog(Log.INFO, "Rebuilding base APK")
         extractDir.listFiles()?.forEach { f ->
@@ -273,32 +331,56 @@ object Patcher {
         val unsignedBase = File(outputDir, "base_unsigned.apk").apply { delete() }
         zipDirectory(buildDir, unsignedBase)
 
-
         addLog(Log.INFO, "Aligning base APK")
         val alignedBase = File(outputDir, "base_aligned.apk")
         alignApk(unsignedBase, alignedBase)
-
 
         addLog(Log.INFO, "Signing base APK")
         val signedBase = File(outputDir, "base.apk")
         APKData.signApks(alignedBase, signedBase, context)
 
-
         val splitFiles = splitsDir.listFiles() ?: emptyArray()
         addLog(Log.INFO, "Processing ${splitFiles.size} split APK(s)")
+
+        val baseManifest = File(extractDir, "AndroidManifest.xml")
+        val targetVersionCode = if (baseManifest.exists()) {
+            ManifestParser.findVersionCode(baseManifest)
+        } else null
+
+        val isDebuggable = if (baseManifest.exists()) {
+            ManifestParser.isDebuggable(baseManifest)
+        } else null
 
         val signedSplitFiles = mutableListOf<File>()
         splitFiles.forEach { splitApk ->
             addLog(Log.INFO, "Processing: ${splitApk.name}")
 
+            // Patch split APK manifest if needed
+            val patchedSplit = if (targetVersionCode != null || isDebuggable != null) {
+                patchSplitApkManifest(
+                    context = context,
+                    splitApk = splitApk,
+                    workDir = workDir,
+                    versionCode = targetVersionCode,
+                    debuggable = isDebuggable
+                )
+            } else {
+                splitApk
+            }
+
             // Align
-            val alignedSplit = File(outputDir, "temp_aligned_${splitApk.name}")
-            alignApk(splitApk, alignedSplit)
+            val alignedSplit = File(outputDir, "temp_aligned_${patchedSplit.name}")
+            alignApk(patchedSplit, alignedSplit)
 
             // Sign
             val signedSplit = File(outputDir, splitApk.name)
             APKData.signApks(alignedSplit, signedSplit, context)
             alignedSplit.delete()
+
+            // Clean up repacked file if it was created
+            if (patchedSplit != splitApk) {
+                patchedSplit.delete()
+            }
 
             signedSplitFiles.add(signedSplit)
             addLog(Log.INFO, "Signed: ${splitApk.name}")
