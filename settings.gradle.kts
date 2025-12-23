@@ -24,5 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "M1rage"
 include(":app")
-include(":HxoLoader")
+include(":HxoInjector")
 include(":TablerIcons")

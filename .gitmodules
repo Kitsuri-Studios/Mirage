@@ -1,3 +1,6 @@
 [submodule "TablerIcons"]
 	path = TablerIcons
 	url = https://github.com/Kitsuri-Studios/TablerIcons.git
+[submodule "hxo-loader"]
+	path = hxo-loader
+	url = https://github.com/Kitsuri-Studios/hxo-loader.git

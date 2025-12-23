@@ -7,14 +7,15 @@ plugins {
 }
 
 
-val hxoModulePath = project(":HxoLoader")
+val hxoModulePath = project(":HxoInjector")
 val hxoDexBuildDir = hxoModulePath.layout.buildDirectory.dir("intermediates/dex")
 val assetsOutputDir = layout.projectDirectory.dir("src/main/assets/loader")
-val hxoProject = project(":HxoLoader")
+val hxoProject = project(":HxoInjector")
 
 android {
     namespace = "io.kitsuri.m1rage"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "io.kitsuri.m1rage"
@@ -58,17 +59,24 @@ tasks.register<Exec>("exportHxoDex") {
     group = "build"
     description = "Copies HxoLoader dex into app assets"
 
-    dependsOn(project(":HxoLoader").tasks.named("aarToDexRelease"))
+    dependsOn(project(":HxoInjector").tasks.named("aarToDexRelease"))
 
     commandLine("python", "--version")
 
     commandLine(
         "python",
-        "${rootProject.projectDir}/scripts/export_hxo_dex.py",
+        "${rootProject.projectDir}/export_hxo_dex.py",
         "${rootProject.projectDir}/out",
         "${projectDir}/src/main/assets/loader"
     )
 }
+
+afterEvaluate {
+    tasks.matching { it.name == "preBuild" }.configureEach {
+        dependsOn(":buildHxoAll")
+    }
+}
+
 
 
 dependencies {
