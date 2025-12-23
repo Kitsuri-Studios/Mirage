@@ -21,7 +21,7 @@ data class TopBarConfig(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScaffold() {
-    var selectedScreen by remember { mutableStateOf<Screen>(Screen.Home) }
+    var selectedScreen by remember { mutableStateOf<Screen>(Screen.Patcher) }
 
     val screens = listOf(Screen.Home, Screen.Patcher, Screen.Settings)
 
@@ -37,8 +37,8 @@ fun MainScaffold() {
     }
 
     BackHandler {
-        if (selectedScreen != Screen.Home) {
-            selectedScreen = Screen.Home
+        if (selectedScreen != Screen.Patcher) {
+            selectedScreen = Screen.Patcher
         } else {
             if (backPressedOnce) {
                 activity?.finish()

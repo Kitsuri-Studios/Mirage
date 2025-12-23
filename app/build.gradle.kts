@@ -1,5 +1,5 @@
 import java.io.File
-
+import java.util.regex.Pattern
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,7 +23,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
+        buildConfigField(
+            "String",
+            "HXO_VERSION",
+            "\"${readHxoVersion()}\""
+        )
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -46,7 +50,9 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+
 }
 
 tasks.matching { it.name.startsWith("assemble") }.configureEach {
@@ -77,6 +83,14 @@ afterEvaluate {
     }
 }
 
+fun readHxoVersion(): String {
+    val cmake = file("$rootDir/hxo-loader/CMakeLists.txt").readText()
+    val matcher = Pattern
+        .compile("""project\s*\(\s*hxo-loader\s+VERSION\s+([0-9.]+)\s*\)""")
+        .matcher(cmake)
+
+    return if (matcher.find()) matcher.group(1) else "unknown"
+}
 
 
 dependencies {

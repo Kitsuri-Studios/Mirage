@@ -27,17 +27,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.kitsuri.m1rage.R
 import io.kitsuri.m1rage.ui.components.ShimmerAnimation
 import io.kitsuri.m1rage.model.*
+import io.kitsuri.m1rage.ui.components.HtmlText
 import io.kitsuri.m1rage.ui.components.InfoCard
 import io.kitsuri.m1rage.ui.components.LocalSnackbarHost
 import io.kitsuri.m1rage.ui.components.SelectionColumn
 import io.kitsuri.m1rage.ui.components.SettingsCheckBox
+import io.kitsuri.m1rage.ui.components.SupportCard
 import io.kitsuri.m1rage.ui.components.TopBarConfig
 import kotlinx.coroutines.launch
 
@@ -83,6 +88,7 @@ fun PatcherScreen(
     var showActivitySelectorDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
     val apkPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -127,28 +133,35 @@ fun PatcherScreen(
             floatingActionButton = {
                 when (viewModel.patcherState) {
                     PatcherState.EMPTY -> {
-                        ExtendedFloatingActionButton(
-                            onClick = { showApkSourceDialog = true },
-                            icon = { Icon(Icons.Filled.PlayArrow, null) },
-                            text = { Text("Get started") }
-                        )
+                        FloatingActionButton(
+                            onClick = { showApkSourceDialog = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Get started"
+                            )
+                        }
                     }
 
                     PatcherState.CONFIGURATION -> {
-                        ExtendedFloatingActionButton(
+                        FloatingActionButton(
                             onClick = {
                                 viewModel.dispatch(
                                     PatcherViewModel.ViewAction.StartPatch(context)
                                 )
-                            },
-                            icon = { Icon(Icons.Outlined.AutoFixHigh, null) },
-                            text = { Text("Start Patch") }
-                        )
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AutoFixHigh,
+                                contentDescription = "Start Patch"
+                            )
+                        }
                     }
 
                     else -> Unit
                 }
             }
+
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -234,12 +247,17 @@ private fun EmptyPatcherView() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                 )
+
+
             }
         }
 
         Box(modifier = Modifier.padding(vertical = 16.dp)) {
             InfoCard()
         }
+
+        SupportCard()
+
     }
 }
 
@@ -635,10 +653,15 @@ fun PatchLogsBody(
                     }
 
                     LaunchedEffect(logs.size) {
-                        if (logs.isNotEmpty() && !scrollState.canScrollForward) {
-                            scrollState.animateScrollToItem(logs.size - 1)
+                        if (logs.isNotEmpty()) {
+                            if (patchState == PatcherState.PATCHING) {
+                                scrollState.scrollToItem(logs.lastIndex) // instant
+                            } else {
+                                scrollState.animateScrollToItem(logs.lastIndex) // smooth
+                            }
                         }
                     }
+
                 }
             }
         }
