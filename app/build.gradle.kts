@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 
@@ -117,6 +118,7 @@ dependencies {
     implementation(libs.crashReporter)
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     implementation(libs.ui.graphics)
     implementation(libs.apkutils)
     implementation(libs.adapters)

@@ -5,13 +5,14 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +30,7 @@ import io.kitsuri.m1rage.model.LogsViewModel
 import io.kitsuri.m1rage.model.PatchedAppInfo
 import io.kitsuri.m1rage.navigation.HomeScreen
 import io.kitsuri.m1rage.ui.components.TopBarConfig
+import io.kitsuri.m1rage.ui.dialogs.AppOptionsDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,10 +42,10 @@ internal fun HomeScreen(
     val context = LocalContext.current
     val patchedApps by homeViewModel.patchedApps.collectAsState()
     val isLoading by homeViewModel.isLoading.collectAsState()
+    var selectedApp by remember { mutableStateOf<PatchedAppInfo?>(null) }
 
     LaunchedEffect(Unit) {
         homeViewModel.refreshPatchedApps(context)
-        // Show default top bar for Home screen
         onTopBarConfigChanged(TopBarConfig(show = true))
     }
 
@@ -78,7 +80,10 @@ internal fun HomeScreen(
                     when {
                         isLoading -> LoadingView()
                         patchedApps.isEmpty() -> EmptyStateView()
-                        else -> PatchedAppsListView(patchedApps = patchedApps)
+                        else -> PatchedAppsListView(
+                            patchedApps = patchedApps,
+                            onAppClick = { selectedApp = it }
+                        )
                     }
                 }
                 HomeScreen.Logs.ordinal -> {
@@ -86,6 +91,14 @@ internal fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Show dialog when an app is selected
+    selectedApp?.let { app ->
+        AppOptionsDialog(
+            app = app,
+            onDismiss = { selectedApp = null }
+        )
     }
 }
 
@@ -130,54 +143,88 @@ private fun EmptyStateView() {
 }
 
 @Composable
-private fun PatchedAppsListView(patchedApps: List<PatchedAppInfo>) {
+private fun PatchedAppsListView(
+    patchedApps: List<PatchedAppInfo>,
+    onAppClick: (PatchedAppInfo) -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(patchedApps, key = { it.packageName }) { app ->
-            PatchedAppCard(app = app)
+            PatchedAppCard(
+                app = app,
+                onClick = { onAppClick(app) }
+            )
         }
     }
 }
 
 @Composable
-private fun PatchedAppCard(app: PatchedAppInfo) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+private fun PatchedAppCard(
+    app: PatchedAppInfo,
+    onClick: () -> Unit
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        border = CardDefaults.outlinedCardBorder().copy(width = 1.5.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Image(
-                bitmap = app.icon.toBitmap().asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                tonalElevation = 2.dp,
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Image(
+                    bitmap = app.icon.toBitmap().asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            }
+
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = app.appName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = app.packageName,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = "Open options",
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
         }
     }
 }

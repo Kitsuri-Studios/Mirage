@@ -15,8 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -116,32 +115,61 @@ private fun StoragePermissionView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            imageVector = Icons.Outlined.Folder,
-            contentDescription = null,
-            modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-        )
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .then(
+                    Modifier.padding(16.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
         Spacer(modifier = Modifier.height(24.dp))
         Text(
             text = "Storage Permission Required",
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = "To view logs from patched apps, M1rage needs access to read files from the media directory.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = onRequestPermission,
-            modifier = Modifier.fillMaxWidth(0.7f)
+            modifier = Modifier
+                .fillMaxWidth(0.75f)
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Grant Permission")
+            Text(
+                text = "Grant Permission",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
@@ -161,27 +189,29 @@ private fun LogsEmptyStateView() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = Icons.Outlined.Description,
             contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            modifier = Modifier.size(72.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         Text(
             text = "No logs found",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Logs from patched apps will appear here",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -214,44 +244,77 @@ private fun AppLogCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 4.dp,
+            hoveredElevation = 3.dp
+        ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = CardDefaults.outlinedCardBorder().copy(width = 1.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Image(
-                bitmap = app.icon.toBitmap().asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                tonalElevation = 2.dp,
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Image(
+                    bitmap = app.icon.toBitmap().asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+            }
+
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     text = app.appName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = app.packageName,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Icon(
-                imageVector = Icons.Outlined.Description,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Description,
+                        contentDescription = "View logs",
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }

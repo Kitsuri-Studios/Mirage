@@ -161,7 +161,7 @@ fun SupportCard() {
 
             Text(
                 modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-                text = "Creaated By Kitsuri Studios\nLicenced Under GNU GPL 3.0",
+                text = "Created By Kitsuri Studios\nLicenced Under GNU GPL 3.0",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
