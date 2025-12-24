@@ -384,6 +384,7 @@ private fun ConfigurationView(
             title = stringResource(R.string.patcher_override_version_title),
             desc = stringResource(R.string.patcher_override_version_desc)
         )
+        Spacer(Modifier.height(48.dp))
     }
 }
 

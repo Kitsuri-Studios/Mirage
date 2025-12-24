@@ -264,7 +264,9 @@ private fun AppList(
                     }
                 } else null
             )
-
+        }
+        item {
+            Spacer(Modifier.height(64.dp))
         }
     }
 }
