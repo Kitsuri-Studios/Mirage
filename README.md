@@ -16,7 +16,7 @@ https://github.com/user-attachments/assets/32a9c128-141c-4334-b04f-26a7dba350dd
 
 ## Installation Instructions
 
-Setting up Lumina Client is quick and straightforward. Follow these steps:
+Setting up Mirage Client is quick and straightforward. Follow these steps:
 
 1. **Download the APK**: Head to our [Releases page](https://github.com/Kitsuri-Studios/Mirage/releases) and download the latest Mirrage APK.
 2. **Allow Unknown Sources**: On your Android device, go to **Settings > Security** (or **Apps & Notifications** on newer versions) and enable **Install from Unknown Sources**.
@@ -26,7 +26,7 @@ If you encounter issues, visit our [Discord](https://discord.gg/tt25ff6WH6) for 
 
 ## Development Setup
 
-For developers looking to contribute or customize Lumina, here’s how to set up your environment:
+For developers looking to contribute or customize Mirage, here’s how to set up your environment:
 
 1. **Clone the Repository**:
 
@@ -49,7 +49,7 @@ For developers looking to contribute or customize Lumina, here’s how to set up
 4. **Build and Test**:
 
    - Connect an Android device or configure an emulator.
-   - Select **Run > Run 'app'** to build and deploy Lumina.
+   - Select **Run > Run 'app'** to build and deploy Mirage.
    - Test changes on a local Minecraft Bedrock server to verify functionality.
 
 Refer to inline comments, For development tips, join our [Discord](https://discord.gg/tt25ff6WH6).
